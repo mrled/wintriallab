@@ -89,7 +89,7 @@ packer/vagrant/postinstall improvements:
 
 - store passwords securely for shit and/or generate them on the fly
 - use client certs for WinRM: https://msdn.microsoft.com/en-us/library/aa384295%28v=vs.85%29.aspx ?? only if packer/vagrant can support it tho
-- would be great if I didn't have duplicated Autounattend.xml files everywhere - can I templatize this?
+- would be great if I didn't have duplicated Autounattend.xml files everywhere - can I templatize this? Looks like the [inductor](https://github.com/joefitzgerald/inductor) project from @joefitzgerald (also responsible for the packer-windows project that wintriallab is based on) was intended to do this
 - in Autounattend.xml, we turn off UAC. (That's the `<EnableLUA>false</EnableLUA>` setting.) Is this really required? Or was it only required for using shitty SSH?
 
 vagrant provisioners
