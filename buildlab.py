@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
-import datetime
 import glob
+import logging
 import os
 import shutil
 import subprocess
@@ -10,44 +10,10 @@ import sys
 
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
-debug = False
-verbose = False
-
-
-# TODO: use logging module?
-
-
-def strace():
-    import pdb
-    pdb.set_trace()
-
-
-def debugprint(message):
-    global debug
-    if debug:
-        print("DEBUG: " + message)
-
-
-def verboseprint(message):
-    global verbose
-    if verbose:
-        print("VERBOSE: " + message)
 
 
 def resolvepath(path):
     return os.path.realpath(os.path.normpath(os.path.expanduser(path)))
-
-
-def which(commandname):
-    def is_exe(fpath):
-        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
-    for path in os.environ["PATH"].split(os.pathsep):
-        path = path.strip('"')
-        exe_file = os.path.join(path, commandname)
-        if is_exe(exe_file):
-            return exe_file
-    print("Exe path is {}".format(exe_file))
-    raise Exception("No such command '{}' in %PATH%".format(commandname))
 
 
 def buildpacker(packerfile, outdir, force=False, whatif=False):
@@ -70,9 +36,7 @@ def buildpacker(packerfile, outdir, force=False, whatif=False):
             else:
                 raise Exception("A packer output directory exists at '{}'".format(oldoutput))
 
-    caryatidpath = resolvepath("~/Documents/caryatid")
-    caryatiddestination = resolvepath("D:\\Micah\\Vagrant")
-    cli = 'packer.exe build -var output_directory="{}" -var caryatidpath="{}" -var caryatid_destination="{}" {}'.format(outdir, caryatidpath, caryatiddestination, packerfile)
+    cli = 'packer.exe build -var output_directory="{}" {}'.format(outdir, packerfile)
 
     # NOTE: Packer gives a very weird error if you do not COPY the entire environment
     # When I was setting env to be just a dictionary with the PACKER_* variables I needed,
@@ -86,11 +50,10 @@ def buildpacker(packerfile, outdir, force=False, whatif=False):
     env['PACKER_LOG_PATH'] = logdir
     env['CHECKPOINT_DISABLE'] = '1'
 
-    verboseprint("Running command:\n    {}\n  from directory: {}\n  with environment:\n    {}".format(cli, packerdir, env))
+    logging.info("Running command:\n    {}\n  from directory: {}\n  with environment:\n    {}".format(cli, packerdir, env))
     if whatif:
         return
-    else:
-        subprocess.check_call(cli, env=env, cwd=packerdir)
+    subprocess.check_call(cli, env=env, cwd=packerdir)
 
     boxes = glob.glob("{}/*.box".format(outdir))
     if len(boxes) > 1:
@@ -98,18 +61,8 @@ def buildpacker(packerfile, outdir, force=False, whatif=False):
     elif len(boxes) < 1:
         raise Exception("Apparently the packer process failed, no boxes were created")
 
-    verboseprint("Packed .box file: '{}'".format(boxes[0]))
-
-
-def add2caryatid(name, description, version, provider, artifact, backend, destination, extension=None):
-    """Add a box to a JSON catalog using Caryatid
-    This is a temporary hack until we can get shell-local (or something similar) working on Windows
-    """
-    import importlib.util
-    caryatidspec = importlib.util.spec_from_file_location("caryatid", resolvepath("~/Documents/caryatid/caryatid.py"))
-    caryatid = importlib.util.module_from_spec(caryatidspec)
-    caryatidspec.loader.exec_module(caryatid)
-    caryatid.addcopy(name, description, version, provider, artifact, destination)
+    logging.info("Packed .box file: '{}'".format(boxes[0]))
+    return boxes[0]
 
 
 def addvagrantbox(vagrantboxname, packedboxpath, force, whatif):
@@ -122,7 +75,7 @@ def addvagrantbox(vagrantboxname, packedboxpath, force, whatif):
     forcearg = '--force' if force else ''
     cli = "vagrant.exe box add {} --name {} {}".format(forcearg, vagrantboxname, packedboxname)
 
-    print("Running caryatid:\n    {}".format(cli))
+    print("Running vagrant:\n    {}".format(cli))
     if whatif:
         return
     else:
@@ -136,14 +89,14 @@ def main(*args, **kwargs):
 
     parser.add_argument(
         "baseconfigname", action='store',
-        help="The name of one of the subdirs of this directory, like windows_81_x86")
+        help="The name of one of the subdirs of the 'packer' directory, like windows_81_x86")
 
     parser.add_argument(
-        "--base-out-dir", "-o", action='store', default="~/Documents/WinTrialLab",
+        "--base-out-dir", "-o", action='store', default="{}/output".format(scriptdir),
         help="The base output directory, where Packer does its work and saves its final output. (NOT the VM directory, which is a setting in VirtualBox.)")
     parser.add_argument(
-        "--action", "-a", action='store', default="packercaryatid",
-        choices=['packer', 'vagrant', 'caryatid', 'packervagrant', 'packercaryatid'],
+        "--action", "-a", action='store', default="packervagrant",
+        choices=['packer', 'vagrant', 'packervagrant'],
         help="The action to perform. By default, build with packer and add to vagrant.")
     parser.add_argument(
         "--whatif", "-w", action='store_true',
@@ -152,49 +105,23 @@ def main(*args, **kwargs):
         "--force", "-f", action='store_true',
         help="Force continue, even if old output directories already exist")
     parser.add_argument(
-        "--debug", "-d", action='store_true',
-        help="Print debug and verbose messages")
-    parser.add_argument(
         "--verbose", "-v", action='store_true',
         help="Print verbose messages")
 
     parsed = parser.parse_args()
-    if parsed.debug:
-        global debug
-        debug = True
-    if parsed.debug or parsed.verbose:
-        global verbose
-        verbose = True
-
-    if parsed.action == "packervagrant":
-        actions = ['packer', 'vagrant']
-    elif parsed.action == "packercaryatid":
-        actions = ['packer', 'caryatid']
-    else:
-        actions = [parsed.action]
-
+    if parsed.verbose:
+        logging.basicConfig(level=logging.DEBUG)
     fullconfigname = "wintriallab-{}".format(parsed.baseconfigname)
     packeroutdir = os.path.join(resolvepath(parsed.base_out_dir), fullconfigname)
     packerfile = os.path.join(scriptdir, 'packer', parsed.baseconfigname, '{}_packerfile.json'.format(parsed.baseconfigname))
 
-    if 'packer' in actions:
+    if 'packer' in parsed.action:
         buildpacker(packerfile, packeroutdir, force=parsed.force, whatif=parsed.whatif)
 
     packedboxpath = glob.glob("{}/{}_*_virtualbox.box".format(packeroutdir, parsed.baseconfigname))[0]
 
-    if 'vagrant' in actions:
+    if 'vagrant' in parsed.action:
         addvagrantbox(fullconfigname, packedboxpath, force=parsed.force, whatif=parsed.whatif)
-    if 'caryatid' in actions:
-        now = datetime.datetime.now()
-        add2caryatid(
-            'wintriallab-win10-32',
-            'Windows Trial Lab: Windows 10 32-bit',
-            # '1.{}.{}'.format(now.strftime('%Y%m%d'), now.strftime('%H%M%S')),
-            '1.0.{}'.format(now.strftime('%Y%m%d%H%M%S')),
-            'virtualbox',
-            packedboxpath,
-            'copy',
-            'E:\\Micah\\caryatid')
 
 
 if __name__ == '__main__':
