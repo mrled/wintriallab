@@ -1134,7 +1134,7 @@ function Set-IdleDisplayPoweroffTime {
 .description
 Allow connecting to HTTPS WinRM servers (used with, for example, Enter-PSSession) without checking the certificate. This is not recommended, but can be useful for non-domain-joined VMs that will connect to a remote network over a VPN. (Note that not checking the RDP certificate is no improvement over not checking the WinRM certificate.)
 #>
-Enable-UntrustedOutboundWinRmConnections {
+function Enable-UntrustedOutboundWinRmConnections {
     [CmdletBinding()] Param()
     Set-Item WSMan:\localhost\Client\Auth\CredSSP $True
     Set-Item WSMan:\localhost\Service\Auth\CredSSP $True

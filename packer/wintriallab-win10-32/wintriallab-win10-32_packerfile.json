@@ -40,6 +40,30 @@
         ["modifyvm", "{{.Name}}", "--accelerate2dvideo", "on"],
         ["modifyvm", "{{.Name}}", "--vram", 128]
       ]
+    },
+    {
+      "type": "hyperv-iso",
+      "iso_url": "http://care.dlservice.microsoft.com/dl/download/C/3/9/C399EEA8-135D-4207-92C9-6AAB3259F6EF/10240.16384.150709-1700.TH1_CLIENTENTERPRISEEVAL_OEMRET_X86FRE_EN-US.ISO",
+      "iso_checksum_type": "sha1",
+      "iso_checksum": "875b450d67e7176b8b3c72a80c60a0628bf1afac",
+      "boot_wait": "2m",
+      "communicator": "winrm",
+      "winrm_username": "vagrant",
+      "winrm_password": "V@grant123",
+      "winrm_timeout": "24h",
+      "shutdown_command": "shutdown /s /t 10 /f /d p:4:1 /c \"Packer Shutdown\"",
+      "disk_size": 61440,
+      "enable_virtualization_extensions": true,
+      "ram_size": 2048,
+      "cpu": 2,
+      "floppy_files": [
+        "./Autounattend.xml",
+        "../../scripts/win-updates.ps1",
+        "../../scripts/enable-winrm.ps1",
+        "../../scripts/wintriallab-postinstall.psm1",
+        "../../scripts/autounattend-postinstall.ps1",
+        "../../scripts/provisioner-postinstall.ps1"
+      ]
     }
   ],
   "provisioners": [

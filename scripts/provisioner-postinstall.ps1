@@ -10,13 +10,13 @@ $errorActionPreference = "Continue"
 import-module $PSScriptRoot\wintriallab-postinstall.psm1
 
 # These commands are fragile and shouldn't fail the build if they fail, so I put them in a try/catch outside of Invoke-ScriptblockAndCatch
-try { 
+try {
     Set-PinnedApplication -Action UnpinFromTaskbar -Filepath "C:\Program Files\WindowsApps\Microsoft.WindowsStore_2015.10.5.0_x86__8wekyb3d8bbwe\WinStore.Mobile.exe" -ErrorAction Continue
     Set-PinnedApplication -Action PinToTaskbar -Filepath "$PSHOME\Powershell.exe"
     Set-PinnedApplication -Action PinToTaskbar -Filepath "${env:SystemRoot}\system32\eventvwr.msc"
     $UserPinnedTaskBar = "${env:AppData}\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar"
     if (test-path "$UserPinnedTaskBar\Server Manager.lnk") { rm "$UserPinnedTaskBar\Server Manager.lnk" }
-} 
+}
 catch {}
 
 Invoke-ScriptblockAndCatch -scriptBlock {
