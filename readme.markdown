@@ -83,6 +83,15 @@ And these are some specific changes that may impact you
     - packer/
         - (folders for each version of Windows)
 
+## Hyper-V notes
+
+While you can have, say, VMware and VirtualBox installed on the same workstation and happily generate a Vagrant artifact for each from the same packerfile, enabling Hyper-V will keep you from running other virtualizers. If it's necessary to use the same machine to generate Hyper-V and non-Hyper-V artifacts, you might address this in one of the following ways:
+
+- You can [create a boot entry](http://www.hanselman.com/blog/SwitchEasilyBetweenVirtualBoxAndHyperVWithABCDEditBootEntryInWindows81.aspx) to switch between a boot configuration with Hyper-V enabled and one with Hyper-V disabled
+- You can (apparently - I haven't tried this myself) generate a Hyper-V Vagrant box from a VirtualBox Vagrant box via the [Packer post-processor: VirtualBox to Hyper-V](https://github.com/dwickern/packer-post-processor-virtualbox-to-hyperv) Packer plugin
+
+Note that you may also keep Hyper-V and other builders in your packerfile, but only invoke selected ones via the `-only=builder1,builder2...` flag that can be [passed to `packer build`](https://www.packer.io/docs/command-line/build.html). This won't solve the problem for users wishing to have one machine build Hyper-V and other Vagrant boxes without rebooting, but if you wish to use the same packerfile across some machines with Hyper-V and some machines with another virtualizer, it may be good enough.
+
 ## To do
 
 packer/vagrant/postinstall improvements:
