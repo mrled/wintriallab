@@ -339,7 +339,7 @@ function Set-RestartScheduledTask {
     $trigger = New-ScheduledTaskTrigger -AtLogon -User $currentUser
     # SchTasks.exe cannot specify an action with long arguments (maxes out at like 200something chars). Modify it here: 
     $action = New-ScheduledTaskAction -Execute "$PSHome\Powershell.exe" -Argument "-File `"$tempRestartScriptPath`""
-    Set-ScheduledTask -taskname $taskName -action $action -trigger $trigger
+    Set-ScheduledTask -taskname $taskName -action $action -trigger $trigger -allowStartIfOnBatteries -DontStopIfGoingOnBatteries
     
     $message  = "Created scheduled task called '$taskName', which will run a temp file at '$tempRestartScriptPath', containing:`r`n`r`n"
     $message += (Get-Content $tempRestartScriptPath) -join "`r`n"
@@ -421,15 +421,16 @@ function Install-VBoxAdditions {
         $baseDir = resolve-path $baseDir | select -expand Path
         Write-EventLogWrapper "Installing VBox Additions from '$baseDir'"
         Write-EventLogWrapper "Installing the Oracle certificate..."
-        $oracleCert = resolve-path "$baseDir\cert\oracle-vbox.cer" | select -expand path
+        $oracleCert = resolve-path "$baseDir\cert\*sha*" | select -expand path
+        foreach($cert in $oracleCert)   {
+            Invoke-ExpressionEx -checkExitCode -command ('& "{0}" add-trusted-publisher "{1}" --root "{1}"' -f "$baseDir\cert\VBoxCertUtil.exe",$cert)
+        }
         # NOTE: Checking for exit code, but this command will fail with an error if the cert is already installed
-        Invoke-ExpressionEx -checkExitCode -command ('& "{0}" add-trusted-publisher "{1}" --root "{1}"' -f "$baseDir\cert\VBoxCertUtil.exe",$oracleCert)
         Write-EventLogWrapper "Installing the virtualbox additions"
         Invoke-ExpressionEx -checkExitCode -command ('& "{0}" /with_wddm /S' -f "$baseDir\VBoxWindowsAdditions.exe") # returns IMMEDIATELY, goddamn fuckers
         while (get-process -Name VBoxWindowsAdditions*) { write-host 'Waiting for VBox install to finish...'; sleep 1; }
         Write-EventLogWrapper "virtualbox additions have now been installed"
-    }
-    
+    }    
     switch ($PSCmdlet.ParameterSetName) {
         "InstallFromIsoPath" {
             $isoPath = resolve-path $isoPath | select -expand Path
