@@ -334,12 +334,15 @@ function Set-RestartScheduledTask {
     
     $schTasksCmd = 'SchTasks.exe /create /sc ONLOGON /tn "{0}" /tr "cmd.exe /c echo TemporparyPlaceholderCommand" /ru "{1}" /it /rl HIGHEST /f' -f $taskName,$currentUser 
     Invoke-ExpressionEx -command $schTasksCmd -invokeWithCmdExe -checkExitCode
-        
+    
+    # schtasks.exe cannot modify specific battery arguments without importing XML (not gonna do.dat). Modify it here:
+
+    $settings = New-ScheduledTaskSettingsSet -allowStartIfonBatteries -dontStopIfGoingOnBatteries 
     # SchTasks.exe cannot specify a user for the LOGON schedule - it applies to all users. Modify it here:
     $trigger = New-ScheduledTaskTrigger -AtLogon -User $currentUser
     # SchTasks.exe cannot specify an action with long arguments (maxes out at like 200something chars). Modify it here: 
     $action = New-ScheduledTaskAction -Execute "$PSHome\Powershell.exe" -Argument "-File `"$tempRestartScriptPath`""
-    Set-ScheduledTask -taskname $taskName -action $action -trigger $trigger -allowStartIfOnBatteries -DontStopIfGoingOnBatteries
+    Set-ScheduledTask -taskname $taskName -settings $settings -action $action -trigger $trigger
     
     $message  = "Created scheduled task called '$taskName', which will run a temp file at '$tempRestartScriptPath', containing:`r`n`r`n"
     $message += (Get-Content $tempRestartScriptPath) -join "`r`n"
