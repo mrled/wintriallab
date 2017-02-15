@@ -62,6 +62,7 @@ Scripts:
 - Figure out a way to determine hypervisor during `autounattend-postinstall.ps1` and install the hypervisor drivers (right now it's hardcoded to just install the vbox ones, which will break on other hypervisors)
 - Convert the postinstall scripts to use Powershell DSC
 - Write Pester tests for all script logic (including DSC logic)
+- What's the impact of `Install-CompiledDotNetAssemblies` and `Compress-WindowsInstall` (called at the bottom of `provisioner-postinstall.ps1`)? They both add about 15 minutes to the build time... are they worth it?
 
 Packer:
 
