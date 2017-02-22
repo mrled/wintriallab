@@ -11,7 +11,7 @@ $ArchitectureId = @{
     i386 = "i386"
 }
 $WindowsVersionId = @{
-    w81 = "w81" 
+    w81 = "w81"
     w10 = "w10"
     w10ltsb = "w10ltsb"
     server2012r2 = "server2012r2"
@@ -65,7 +65,7 @@ function Add-FileLineIdempotently {
     )
     if (-not (Test-Path $file)) { New-Item -ItemType File -Path $file | Out-Null }
     $origContents = Get-Content $file
-    $newLine |% { 
+    $newLine |% {
         if ($origContents -notcontains $_) {
             Out-File -FilePath $file -InputObject $_ -Encoding $encoding -Append
         }
@@ -344,7 +344,7 @@ function Set-RestartScheduledTask {
     "Unregister-ScheduledTask -taskName '$taskName' -Confirm:`$false" | Out-File -Append -FilePath $tempRestartScriptPath
     Test-PowershellSyntax -ThrowOnFailure -FileName $tempRestartScriptPath
     
-    $schTasksCmd = 'SchTasks.exe /create /sc ONLOGON /tn "{0}" /tr "cmd.exe /c echo TemporparyPlaceholderCommand" /ru "{1}" /it /rl HIGHEST /f' -f $taskName,$currentUser 
+    $schTasksCmd = 'SchTasks.exe /create /sc ONLOGON /tn "{0}" /tr "cmd.exe /c echo TemporparyPlaceholderCommand" /ru "{1}" /it /rl HIGHEST /f' -f $taskName,$currentUser
     Invoke-ExpressionEx -command $schTasksCmd -invokeWithCmdExe -checkExitCode
     
     # schtasks.exe cannot modify specific battery arguments without importing XML (not gonna do.dat). Modify it here:
@@ -372,7 +372,7 @@ function Remove-RestartScheduledTask {
     [cmdletbinding()] param(
         [string] $taskName = $ScriptProductName
     )
-    $existingTask = Get-RestartScheduledTask -taskName $taskName 
+    $existingTask = Get-RestartScheduledTask -taskName $taskName
     if ($existingTask) {
         Write-EventLogWrapper -message "Found existing task named '$taskName'; deleting..."
         Unregister-ScheduledTask -InputObject $existingTask -Confirm:$false | out-null
@@ -386,8 +386,8 @@ function Remove-RestartScheduledTask {
 .description
 Return the OS Architecture of the current system, as determined by WMI
 Will return either "i386" or "amd64"
-TODO: this isn't a great method but I'm tired of trying to find the totally correct one. This one isn't ideal because OSArchitecture can be localized. 
-I've seen some advice that you should call into the registry  
+TODO: this isn't a great method but I'm tired of trying to find the totally correct one. This one isn't ideal because OSArchitecture can be localized.
+I've seen some advice that you should call into the registry
 - reg Query "HKLM\Hardware\Description\System\CentralProcessor\0" | find /i "x86" > NUL && set OSARCHITECTURE=32BIT || set OSARCHITECTURE=64BIT
 - http://stackoverflow.com/a/24590583/868206
 - https://support.microsoft.com/en-us/kb/556009
@@ -395,7 +395,7 @@ I've seen some advice that you should call into the registry
 #>
 function Get-OSArchitecture {
     $OSArch = Get-WmiObject -class win32_operatingsystem -property osarchitecture | select -expand OSArchitecture
-    if ($OSArch -match "64") { return $ArchitectureId.amd64 } 
+    if ($OSArch -match "64") { return $ArchitectureId.amd64 }
     elseif ($OSArch -match "32") { return $ArchitectureId.i386 }
     else { throw "Could not determine OS Architecture from string '$OSArch'" }
 }
@@ -410,11 +410,11 @@ function Test-AdminPrivileges {
     return $elevated
 }
 
-function Install-SevenZip { 
+function Install-SevenZip {
     $OSArch = Get-OSArchitecture
     $szDlPath = Get-WebUrl -url $URLs.SevenZipDownload.$OSArch -outDir $env:temp
     try {
-        Write-EventLogWrapper "Downloaded '$($URLs.SevenZipDownload.$OSArch)' to '$szDlPath', now running msiexec..."    
+        Write-EventLogWrapper "Downloaded '$($URLs.SevenZipDownload.$OSArch)' to '$szDlPath', now running msiexec..."
         $msiCall = '& msiexec /qn /i "{0}"' -f $szDlPath
         # Windows suxxx so msiexec sometimes returns right away? or something idk. fuck
         Invoke-ExpressionEx -checkExitCode -command $msiCall -sleepSeconds 30
@@ -445,7 +445,7 @@ function Install-VBoxAdditions {
         Invoke-ExpressionEx -checkExitCode -command ('& "{0}" /with_wddm /S' -f "$baseDir\VBoxWindowsAdditions.exe") # returns IMMEDIATELY, goddamn fuckers
         while (get-process -Name VBoxWindowsAdditions*) { write-host 'Waiting for VBox install to finish...'; sleep 1; }
         Write-EventLogWrapper "virtualbox additions have now been installed"
-    }    
+    }
     switch ($PSCmdlet.ParameterSetName) {
         "InstallFromIsoPath" {
             $isoPath = resolve-path $isoPath | select -expand Path
@@ -517,7 +517,7 @@ function Install-CompiledDotNetAssemblies {
     ngen32 update /force /queue
     ngen32 executequeueditems
         
-    if ((Get-OSArchitecture) -match $ArchitectureId.amd64) { 
+    if ((Get-OSArchitecture) -match $ArchitectureId.amd64) {
         $ngen64path = "${env:WinDir}\microsoft.net\framework64\v4.0.30319\ngen.exe"
         # Invoke-ExpressionEx "$ngen64path update /force /queue"
         # Invoke-ExpressionEx "$ngen64path executequeueditems"
@@ -556,8 +556,8 @@ function Disable-WindowsUpdates {
     Test-AdminPrivileges -ThrowIfNotElevated
 
     $Updates = (New-Object -ComObject "Microsoft.Update.AutoUpdate").Settings
-    if ($Updates.ReadOnly) { 
-        throw "Cannot update Windows Update settings due to GPO restrictions." 
+    if ($Updates.ReadOnly) {
+        throw "Cannot update Windows Update settings due to GPO restrictions."
     }
 
     $Updates.NotificationLevel = 1 # 1 = Disabled lol
@@ -569,9 +569,9 @@ function Enable-MicrosoftUpdate {
     [cmdletbinding()] param()
     Write-EventLogWrapper "Enabling Microsoft Update..."
     stop-service wuauserv
-    $auKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update" 
-    Set-ItemProperty -path $auKey -name EnableFeaturedSoftware -value 1 
-    Set-ItemProperty -path $auKey -name IncludeRecommendedUpdates -value 1 
+    $auKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update"
+    Set-ItemProperty -path $auKey -name EnableFeaturedSoftware -value 1
+    Set-ItemProperty -path $auKey -name IncludeRecommendedUpdates -value 1
 
     $ServiceManager = New-Object -ComObject "Microsoft.Update.ServiceManager"
     $ServiceManager.AddService2("7971f918-a847-4430-9279-4a52d1efe18d",7,"") | out-null
@@ -607,8 +607,8 @@ function Get-FirefoxInstallDirectory {
         $testPath = "$_\Mozilla Firefox"
         if (Test-Path "$testPath\firefox.exe") {$ffDir = $testPath}
     }
-    if (-not $ffDir) { 
-        throw "Could not find the Firefox install location." 
+    if (-not $ffDir) {
+        throw "Could not find the Firefox install location."
     }
     else {
         return $ffDir
@@ -796,7 +796,7 @@ function Set-FirefoxOptions {
         Get-Process |? Name -eq "firefox" | Stop-Process
         @("${env:AppData}\Mozilla\Firefox", "${env:LocalAppData}\Mozilla\Firefox") |% { if (test-path $_) {Remove-Item -Recurse -Force $_} }
     }
-    if ($userSetDefaultBrowser) { 
+    if ($userSetDefaultBrowser) {
         Start-Process -FilePath $ffPath -ArgumentList @("-silent", "-setDefaultBrowser") -Wait -Verb RunAs
         # This didn't appear to work:
         # $defaultBrowserPath = "HKCU:\Software\Classes\http\shell\open\command"
@@ -911,52 +911,52 @@ function Set-UserOptions {
     if ($DisableIEFirstRunCustomize) { Set-ItemProperty -path $internetExplorerKey -name DisableFirstRunCustomize -value 1 }
 }
 
-<#  
-.SYNOPSIS  
-This function are used to pin and unpin programs from the taskbar and Start-menu in Windows 7 and Windows Server 2008 R2 
-.DESCRIPTION  
-The function have to parameteres which are mandatory: 
-Action: PinToTaskbar, PinToStartMenu, UnPinFromTaskbar, UnPinFromStartMenu 
-FilePath: The path to the program to perform the action on 
+<#
+.SYNOPSIS
+This function are used to pin and unpin programs from the taskbar and Start-menu in Windows 7 and Windows Server 2008 R2
+.DESCRIPTION
+The function have to parameteres which are mandatory:
+Action: PinToTaskbar, PinToStartMenu, UnPinFromTaskbar, UnPinFromStartMenu
+FilePath: The path to the program to perform the action on
 .notes
 from: https://gallery.technet.microsoft.com/scriptcenter/b66434f1-4b3f-4a94-8dc3-e406eb30b750
 TODO: I hate it when things pollute the global variable space!
-.EXAMPLE 
-Set-PinnedApplication -Action PinToTaskbar -FilePath "C:\WINDOWS\system32\notepad.exe" 
-.EXAMPLE 
-Set-PinnedApplication -Action UnPinFromTaskbar -FilePath "C:\WINDOWS\system32\notepad.exe" 
-#>  
-function Set-PinnedApplication { 
-    [CmdletBinding()] param( 
-        [Parameter(Mandatory=$true)][string]$Action,  
-        [Parameter(Mandatory=$true)][string]$FilePath 
-    ) 
-    if (-not (test-path $FilePath)) { throw "No file at '$FilePath'" }   
+.EXAMPLE
+Set-PinnedApplication -Action PinToTaskbar -FilePath "C:\WINDOWS\system32\notepad.exe"
+.EXAMPLE
+Set-PinnedApplication -Action UnPinFromTaskbar -FilePath "C:\WINDOWS\system32\notepad.exe"
+#>
+function Set-PinnedApplication {
+    [CmdletBinding()] param(
+        [Parameter(Mandatory=$true)][string]$Action,
+        [Parameter(Mandatory=$true)][string]$FilePath
+    )
+    if (-not (test-path $FilePath)) { throw "No file at '$FilePath'" }
     
-    function InvokeVerb { 
-        param([string]$FilePath,$verb) 
-        $verb = $verb.Replace("&","") 
-        $path = split-path $FilePath 
-        $shell = new-object -com "Shell.Application"  
-        $folder = $shell.Namespace($path)    
-        $item = $folder.Parsename((split-path $FilePath -leaf)) 
-        $itemVerb = $item.Verbs() | ? {$_.Name.Replace("&","") -eq $verb} 
+    function InvokeVerb {
+        param([string]$FilePath,$verb)
+        $verb = $verb.Replace("&","")
+        $path = split-path $FilePath
+        $shell = new-object -com "Shell.Application"
+        $folder = $shell.Namespace($path)
+        $item = $folder.Parsename((split-path $FilePath -leaf))
+        $itemVerb = $item.Verbs() | ? {$_.Name.Replace("&","") -eq $verb}
         if ($itemVerb) { $itemVerb.DoIt() } else { throw "Verb $verb not found." }
-    } 
-    function GetVerb { 
-        param([int]$verbId) 
+    }
+    function GetVerb {
+        param([int]$verbId)
         try { $t = [type]"CosmosKey.Util.MuiHelper" }
-        catch { 
-            $def = [Text.StringBuilder]"" 
-            [void]$def.AppendLine('[DllImport("user32.dll")]') 
-            [void]$def.AppendLine('public static extern int LoadString(IntPtr h,uint id, System.Text.StringBuilder sb,int maxBuffer);') 
-            [void]$def.AppendLine('[DllImport("kernel32.dll")]') 
-            [void]$def.AppendLine('public static extern IntPtr LoadLibrary(string s);') 
-            add-type -MemberDefinition $def.ToString() -name MuiHelper -namespace CosmosKey.Util             
-        } 
-        if($global:CosmosKey_Utils_MuiHelper_Shell32 -eq $null){         
-            $global:CosmosKey_Utils_MuiHelper_Shell32 = [CosmosKey.Util.MuiHelper]::LoadLibrary("shell32.dll") 
-        } 
+        catch {
+            $def = [Text.StringBuilder]""
+            [void]$def.AppendLine('[DllImport("user32.dll")]')
+            [void]$def.AppendLine('public static extern int LoadString(IntPtr h,uint id, System.Text.StringBuilder sb,int maxBuffer);')
+            [void]$def.AppendLine('[DllImport("kernel32.dll")]')
+            [void]$def.AppendLine('public static extern IntPtr LoadLibrary(string s);')
+            add-type -MemberDefinition $def.ToString() -name MuiHelper -namespace CosmosKey.Util
+        }
+        if($global:CosmosKey_Utils_MuiHelper_Shell32 -eq $null){
+            $global:CosmosKey_Utils_MuiHelper_Shell32 = [CosmosKey.Util.MuiHelper]::LoadLibrary("shell32.dll")
+        }
         $maxVerbLength = 255
         $verbBuilder = new-object Text.StringBuilder "",$maxVerbLength
         [void][CosmosKey.Util.MuiHelper]::LoadString($CosmosKey_Utils_MuiHelper_Shell32,$verbId,$verbBuilder,$maxVerbLength)
@@ -968,7 +968,7 @@ function Set-PinnedApplication {
         "PintoTaskbar"=5386
         "UnpinfromTaskbar"=5387
     }
-    if ($verbs.$Action -eq $null) { 
+    if ($verbs.$Action -eq $null) {
         throw "Action $action not supported`nSupported actions are:`n`tPintoStartMenu`n`tUnpinfromStartMenu`n`tPintoTaskbar`n`tUnpinfromTaskbar"
     }
     InvokeVerb -FilePath $FilePath -Verb $(GetVerb -VerbId $verbs.$action)
@@ -984,18 +984,18 @@ function Disable-HibernationFile {
 
 <#
 .synopsis
-Forcibly enable WinRM 
-.notes 
-TODO: Rewrite in pure Powershell 
+Forcibly enable WinRM
+.notes
+TODO: Rewrite in pure Powershell
 #>
 function Enable-WinRM {
     [cmdletbinding()] param()
     Write-EventLogWrapper "Enabling WinRM..."
 
     # I've had the best luck doing it this way - NOT doing it in a single batch script
-    # Sometimes one of these commands will stop further execution in a batch script, but when I 
-    # call cmd.exe over and over like this, that problem goes away. 
-    # Note: order is important. This order makes sure that any time packer can successfully 
+    # Sometimes one of these commands will stop further execution in a batch script, but when I
+    # call cmd.exe over and over like this, that problem goes away.
+    # Note: order is important. This order makes sure that any time packer can successfully
     # connect to WinRm, it won't later turn winrm back off or make it unavailable.
     Stop-Service WinRM
     Invoke-ExpressionEx -invokeWithCmdExe -command 'sc.exe config winrm start= auto'
@@ -1026,7 +1026,7 @@ function Add-LocalSamUser {
     $newUser = $computer.Create("User", $userName)
     $newUser.SetPassword($password)
     $newUser.SetInfo()
-    $newUser.FullName = $fullName 
+    $newUser.FullName = $fullName
     $newUser.SetInfo()
     Add-LocalSamUserToGroup -userName $userName -groupName "Users"
     if ($PassThru) { return $newUser }
@@ -1051,7 +1051,7 @@ function Set-PasswordExpiry { # TODO fixme use pure Powershell
     $passwordExpires = if ($PsCmdlet.ParameterSetName -match "EnablePasswordExpiry") {"TRUE"} else {"FALSE"}
     $command = @"
 wmic useraccount where "name='{0}'" set "PasswordExpires={1}"
-"@ 
+"@
     $command = $command -f $accountName,$passwordExpires
     Invoke-ExpressionEx -command $command
 }
@@ -1101,20 +1101,41 @@ function Set-AllNetworksToPrivate {
     
     # Get network connections
     $networkListManager = [Activator]::CreateInstance([Type]::GetTypeFromCLSID([Guid]"{DCB00C01-570F-4A9B-8D69-199FDBA5723B}"))
+    $networkListIndex = 0
     foreach ($connection in $networkListManager.GetNetworkConnections()) {
+
+        # Wait until the connection has been identified by the OS before attempting to set it to private
+        # This works around a weird issue where this task would fail when run in my script,
+        # but work if I logged in to the in-progress packer VM and copy/pasted it into Powershell
+        # It seems that WMI doesn't have access to the network connections right after startup, but does shortly thereafter.
+        # While it can't read the connections, the name of each will be "Identifying...".
+        # When it becomes able to read the conneections, the name will become something like 'example.com' or 'Unidentified network'
+        $sleepCount = 0
+        $sleepIntervalSeconds = 5
+        $sleepMaxSeconds = 60
+        while ($connection.GetNetwork().GetName() -eq "Identifying...") {
+            $sleepCount += $sleepIntervalSeconds
+            Start-Sleep $sleepIntervalSeconds
+            if ($sleepCount -gt $sleepMaxSeconds) {
+                throw "Could not identify the network connection for network #$networkListIndex"
+            }
+        }
+
         $connName = $connection.GetNetwork().GetName()
-        $message = "Attempting to change connection named '$connName' to private...`r`n"
-        $oldCategory = $connection.GetNetwork().GetCategory()
+        $message = "Changing connection named '$connName' (network #$networkListIndex) to private... "
         try {
+            $oldCategory = $connection.GetNetwork().GetCategory()
             $connection.GetNetwork().SetCategory(1)
             $newCategory = $connection.GetNetwork().GetCategory()
             $message += "Successful. Changed connection category from '$oldCategory' to '$newCategory'"
         }
         catch {
-            $estring = Get-ErrorStackAsString -errorStack $_
-            $message += "Unable to change connection category. Error:`r`n`r`n$estring"
+            $err = Get-ErrorStackAsString -errorStack $_
+            $message += "FAILURE. Error:`r`n`r`n$err"
         }
+
         Write-EventLogWrapper -message $message
+        $networkListIndex += 1
     }
 }
 
@@ -1154,10 +1175,10 @@ function Get-PowerScheme {
 <#
 .synopsis
 Set the idle time that must elapse before Windows will power off a display
-.parameter seconds 
+.parameter seconds
 The number of seconds before poweroff. A value of 0 means never power off.
 .notes
-AFAIK, this cannot be done without shelling out to powercfg  
+AFAIK, this cannot be done without shelling out to powercfg
 #>
 function Set-IdleDisplayPoweroffTime {
     [cmdletbinding()] param(
@@ -1167,7 +1188,7 @@ function Set-IdleDisplayPoweroffTime {
     $DisplaySubgroupGUID = "7516b95f-f776-4464-8c53-06167f40cc99"
     $TurnOffAfterGUID = "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e"
     set-alias powercfg "${env:SystemRoot}\System32\powercfg.exe"
-    powercfg /setacvalueindex $currentScheme $DisplaySubgroupGUID $TurnOffAfterGUID 0 
+    powercfg /setacvalueindex $currentScheme $DisplaySubgroupGUID $TurnOffAfterGUID 0
 }
 
 <#
