@@ -170,19 +170,19 @@ function Invoke-ExpressionEx {
     $output = $null
     
     try {
-        if ($logToStdout) { 
-            $commandSb.invoke() 
+        if ($logToStdout) {
+            $commandSb.invoke()
             $message = "Expression '$command' exited with code '$LASTEXITCODE'"
-        } 
-        else { 
-            $output = $commandSb.invoke() 
+        }
+        else {
+            $output = $commandSb.invoke()
             $message = "Expression '$command' exited with code '$LASTEXITCODE' and output the following to the console:`r`n`r`n$output"
         }
-        Write-EventLogWrapper -message $message 
+        Write-EventLogWrapper -message $message
     }
     catch {
-        Write-EventLogWrapper -message "Invoke-ExpressionEx failed to run command '$command'"
-        Write-ErrorStackToEventLog -errorStack $_
+        $err = Get-ErrorStackAsString -errorStack $_
+        Write-EventLogWrapper -message "Invoke-ExpressionEx failed to run command '$command'. Error:`r`n`r`n$err"
         throw $_
     }
     
@@ -227,7 +227,7 @@ function Get-WindowsTrialISO {
 }
 
 <#
-.synopsis 
+.synopsis
 Wrapper that writes to the event log but also to the screen
 #>
 function Write-EventLogWrapper {
@@ -253,7 +253,7 @@ function Write-EventLogWrapper {
 .synopsis
 Invoke a scriptblock. If it throws, write the errors out to the event log and exist with an error code
 .notes
-This is intended to be a handy wrapper for calling functions in this module that takes care of logging an exception for you. 
+This is intended to be a handy wrapper for calling functions in this module that takes care of logging an exception for you.
 See the autounattend-postinstall.ps1 and provisioner-postinstall.ps1 scripts for examples.
 #>
 function Invoke-ScriptblockAndCatch {
@@ -265,20 +265,32 @@ function Invoke-ScriptblockAndCatch {
         Invoke-Command $scriptBlock
     }
     catch {
-        Write-ErrorStackToEventLog -errorStack $error
+        $err = Get-ErrorStackAsString -errorStack $_
+        Write-EventLogWrapper -message "Command '$($scriptBlock.ToString())' failed with an error:`r`n`r`n$err"
         exit $failureExitCode
     }
 }
 
-function Write-ErrorStackToEventLog {
+function Get-ErrorStackAsString {
     [cmdletbinding()] param(
-        [parameter(mandatory=$true)] $errorStack
+        $errorStack = $error.ToArray()
     )
-    $message  = "======== CAUGHT EXCEPTION ========`r`n$errorStack`r`n"
-    $message += "======== ERROR STACK ========`r`n"
-    $errorStack |% { $message += "$_`r`n----`r`n" }
-    $message += "======== ========"
-    Write-EventLogWrapper $message
+    $message = "CAUGHT EXCEPTION. ERROR Report: `$Error.count=$($errorStack.count)`r`n`r`n"
+    for ($i=$errorStack.count -1; $i -ge 0; $i-=1) {
+        $err = $errorStack[$i]
+        $message += "==== `$Error[$i] ====`r`n"
+
+        # $error can contain at least 2 kind of objects - ErrorRecord objects, and things that wrap ErrorRecord objects
+        # The information we need is found in the ErrorRecord objects, so unwrap them here if necessary
+        if ($err.PSObject.Properties['ErrorRecord']) {$err = $err.ErrorRecord}
+
+        $message += "$($err.ToString())`r`n"
+        if ($err.ScriptStackTrace) {
+            $message += "StackTrace:`r`n$($err.ScriptStackTrace)`r`n"
+        }
+        $message += "`r`n"
+    }
+    return $message
 }
 
 function Test-PowershellSyntax {
@@ -312,15 +324,15 @@ function Test-PowershellSyntax {
 
 <#
 .description
-Set a scheduled task to run on next logon of the calling user. Intended for tasks that need to reboot and then be restarted such as applying Windows Updates 
+Set a scheduled task to run on next logon of the calling user. Intended for tasks that need to reboot and then be restarted such as applying Windows Updates
 .notes
-The Powershell New-ScheduledTask cmdlet is broken for me on Win81, but SchTasks.exe doesn't support actions with long arguments (requires a command line of < 200something characters). lmfao. 
-My workaround is to take a scriptblock, and then just save it to a file and call the file from Powershell. 
-I create the scheduled task with SchTasks.exe, then modify it with Powershell cmdlets that can handle long arguments just fine 
+The Powershell New-ScheduledTask cmdlet is broken for me on Win81, but SchTasks.exe doesn't support actions with long arguments (requires a command line of < 200something characters). lmfao.
+My workaround is to take a scriptblock, and then just save it to a file and call the file from Powershell.
+I create the scheduled task with SchTasks.exe, then modify it with Powershell cmdlets that can handle long arguments just fine
 #>
 function Set-RestartScheduledTask {
     [cmdletbinding()] param(
-        [Parameter(Mandatory=$true)] [Scriptblock] $restartCommand,
+        [Parameter(Mandatory=$true)] [string] $restartCommand,
         [string] $tempRestartScriptPath = "${env:temp}\$ScriptProductName-TempRestartScript.ps1",
         [string] $taskName = "$ScriptProductName-RestartTask"
     )
@@ -328,7 +340,7 @@ function Set-RestartScheduledTask {
     
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     
-    $restartCommand.ToString() | Out-File -FilePath $tempRestartScriptPath
+    Out-File -InputObject $restartCommand -FilePath $tempRestartScriptPath -Encoding utf8
     "Unregister-ScheduledTask -taskName '$taskName' -Confirm:`$false" | Out-File -Append -FilePath $tempRestartScriptPath
     Test-PowershellSyntax -ThrowOnFailure -FileName $tempRestartScriptPath
     
@@ -337,16 +349,16 @@ function Set-RestartScheduledTask {
     
     # schtasks.exe cannot modify specific battery arguments without importing XML (not gonna do.dat). Modify it here:
 
-    $settings = New-ScheduledTaskSettingsSet -allowStartIfonBatteries -dontStopIfGoingOnBatteries 
+    $settings = New-ScheduledTaskSettingsSet -allowStartIfonBatteries -dontStopIfGoingOnBatteries
     # SchTasks.exe cannot specify a user for the LOGON schedule - it applies to all users. Modify it here:
     $trigger = New-ScheduledTaskTrigger -AtLogon -User $currentUser
-    # SchTasks.exe cannot specify an action with long arguments (maxes out at like 200something chars). Modify it here: 
+    # SchTasks.exe cannot specify an action with long arguments (maxes out at like 200something chars). Modify it here:
     $action = New-ScheduledTaskAction -Execute "$PSHome\Powershell.exe" -Argument "-File `"$tempRestartScriptPath`""
     Set-ScheduledTask -taskname $taskName -settings $settings -action $action -trigger $trigger
     
     $message  = "Created scheduled task called '$taskName', which will run a temp file at '$tempRestartScriptPath', containing:`r`n`r`n"
     $message += (Get-Content $tempRestartScriptPath) -join "`r`n"
-    Write-EventLogWrapper -message $message 
+    Write-EventLogWrapper -message $message
 }
 
 function Get-RestartScheduledTask {
@@ -985,7 +997,7 @@ function Enable-WinRM {
     # call cmd.exe over and over like this, that problem goes away. 
     # Note: order is important. This order makes sure that any time packer can successfully 
     # connect to WinRm, it won't later turn winrm back off or make it unavailable.
-    Invoke-ExpressionEx -invokeWithCmdExe -command 'net stop winrm'
+    Stop-Service WinRM
     Invoke-ExpressionEx -invokeWithCmdExe -command 'sc.exe config winrm start= auto'
     Invoke-ExpressionEx -invokeWithCmdExe -command 'winrm quickconfig -q'
     Invoke-ExpressionEx -invokeWithCmdExe -command 'winrm quickconfig -transport:http'
@@ -999,7 +1011,7 @@ function Enable-WinRM {
     Invoke-ExpressionEx -invokeWithCmdExe -command 'winrm set winrm/config/listener?Address=*+Transport=HTTP @{Port="5985"}'
     Invoke-ExpressionEx -invokeWithCmdExe -command 'netsh advfirewall firewall set rule group="remote administration" new enable=yes'
     Invoke-ExpressionEx -invokeWithCmdExe -command 'netsh firewall add portopening TCP 5985 "Port 5985"'
-    Invoke-ExpressionEx -invokeWithCmdExe -command 'net start winrm'
+    Start-Service WinRM
 }
 
 function Add-LocalSamUser {
@@ -1045,6 +1057,15 @@ wmic useraccount where "name='{0}'" set "PasswordExpires={1}"
 }
 
 <#
+.description
+Test whether the machine is joined to a domain
+#>
+function Test-DomainJoined {
+    [CmdletBinding()] Param()
+    return (Get-WmiObject win32_computersystem).DomainRole -in @(1,3,4,5)
+}
+
+<#
 .synopsis
 Set all attached networks to Private
 .description
@@ -1061,13 +1082,20 @@ function Set-AllNetworksToPrivate {
     # Network location feature was only introduced in Windows Vista - no need to bother with this
     # if the operating system is older than Vista
     if([environment]::OSVersion.version.Major -lt 6) {
-        Write-EventLogWrapper "Set-AllNetworksToPrivate: Running on pre-Vista machine, no changes necessary" 
-        return 
+        Write-EventLogWrapper "Set-AllNetworksToPrivate: Running on pre-Vista machine, no changes necessary"
+        return
     }
     Write-EventLogWrapper "Setting all networks to private..."
     
-    if(1,3,4,5 -contains (Get-WmiObject win32_computersystem).DomainRole) { throw "Cannot change network location on a domain-joined computer" }
-    
+    if (Test-DomainJoined) {
+        $message = "Cannot change network location on a domain-joined computer"
+        Write-EventLogWrapper -message $message
+        throw $message
+    }
+    else {
+        Write-EventLogWrapper "Not joined to domain, continuing..."
+    }
+
     # Disable the GUI which will modally pop up (at least on Win10) lol
     New-Item "HKLM:\System\CurrentControlSet\Control\Network\NewNetworkWindowOff" -force | out-null
     
@@ -1075,10 +1103,18 @@ function Set-AllNetworksToPrivate {
     $networkListManager = [Activator]::CreateInstance([Type]::GetTypeFromCLSID([Guid]"{DCB00C01-570F-4A9B-8D69-199FDBA5723B}"))
     foreach ($connection in $networkListManager.GetNetworkConnections()) {
         $connName = $connection.GetNetwork().GetName()
+        $message = "Attempting to change connection named '$connName' to private...`r`n"
         $oldCategory = $connection.GetNetwork().GetCategory()
-        $connection.getNetwork().SetCategory(1)
-        $newCategory = $connection.GetNetwork().GetCategory()
-        Write-EventLogWrapper "Changed connection category for '$connName' from '$oldCategory' to '$newCategory'"
+        try {
+            $connection.GetNetwork().SetCategory(1)
+            $newCategory = $connection.GetNetwork().GetCategory()
+            $message += "Successful. Changed connection category from '$oldCategory' to '$newCategory'"
+        }
+        catch {
+            $estring = Get-ErrorStackAsString -errorStack $_
+            $message += "Unable to change connection category. Error:`r`n`r`n$estring"
+        }
+        Write-EventLogWrapper -message $message
     }
 }
 
