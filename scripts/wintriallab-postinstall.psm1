@@ -297,8 +297,7 @@ function Test-PowershellSyntax {
     [cmdletbinding(DefaultParameterSetName='FromText')]
     param(
         [parameter(mandatory=$true,ParameterSetName='FromText')] [string] $text,
-        [parameter(mandatory=$true,ParameterSetName='FromFile')] [string] $fileName,
-        [switch] $ThrowOnFailure
+        [parameter(mandatory=$true,ParameterSetName='FromFile')] [string] $fileName
     )
     $tokens = @()
     $parseErrors = @()
@@ -315,7 +314,7 @@ function Test-PowershellSyntax {
     if ($parseErrors.count -gt 0) {
         $message = "$($parseErrors.count) parse errors found in file '$fileName':`r`n"
         $parseErrors |% { $message += "`r`n    $_" }
-        if ($ThrowOnFailure) { throw $message } else { write-verbose $message }
+        write-verbose $message
         return $false
     }
     return $true
@@ -341,8 +340,10 @@ function Set-RestartScheduledTask {
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     
     Out-File -InputObject $restartCommand -FilePath $tempRestartScriptPath -Encoding utf8
-    "Unregister-ScheduledTask -taskName '$taskName' -Confirm:`$false" | Out-File -Append -FilePath $tempRestartScriptPath
-    Test-PowershellSyntax -ThrowOnFailure -FileName $tempRestartScriptPath
+    "Unregister-ScheduledTask -taskName '$taskName' -Confirm:`$false" | Out-File -Append -FilePath $tempRestartScriptPath -Encoding utf8
+    if (-not (Test-PowershellSyntax -FileName $tempRestartScriptPath)) {
+        throw "Invalid Powershell syntax in '$tempRestartScriptPath'"
+    }
     
     $schTasksCmd = 'SchTasks.exe /create /sc ONLOGON /tn "{0}" /tr "cmd.exe /c echo TemporparyPlaceholderCommand" /ru "{1}" /it /rl HIGHEST /f' -f $taskName,$currentUser
     Invoke-ExpressionEx -command $schTasksCmd -invokeWithCmdExe -checkExitCode
@@ -354,7 +355,7 @@ function Set-RestartScheduledTask {
     $trigger = New-ScheduledTaskTrigger -AtLogon -User $currentUser
     # SchTasks.exe cannot specify an action with long arguments (maxes out at like 200something chars). Modify it here:
     $action = New-ScheduledTaskAction -Execute "$PSHome\Powershell.exe" -Argument "-File `"$tempRestartScriptPath`""
-    Set-ScheduledTask -taskname $taskName -settings $settings -action $action -trigger $trigger
+    Set-ScheduledTask -taskname $taskName -settings $settings -action $action -trigger $trigger | Out-Null
     
     $message  = "Created scheduled task called '$taskName', which will run a temp file at '$tempRestartScriptPath', containing:`r`n`r`n"
     $message += (Get-Content $tempRestartScriptPath) -join "`r`n"
@@ -1100,40 +1101,46 @@ function Set-AllNetworksToPrivate {
     New-Item "HKLM:\System\CurrentControlSet\Control\Network\NewNetworkWindowOff" -force | out-null
     
     # Get network connections
-    $networkListManager = [Activator]::CreateInstance([Type]::GetTypeFromCLSID([Guid]"{DCB00C01-570F-4A9B-8D69-199FDBA5723B}"))
+    $sleepIntervalSeconds = 5
+    $sleepMaxSeconds = 120
+
+    # First we have to make sure the network connections are ready
+    $sleepCount = 0
+    $successful = $false
+    while (-not $successful) {
+        $networkListIndex = 0
+        # Wrap getting a new $networkListManager and the foreach($connection...) statement in the while loop
+        # This ensures that we don't have stale pointers to $networkListManager or the $connection objects
+        $networkListManager = [Activator]::CreateInstance([Type]::GetTypeFromCLSID([Guid]"{DCB00C01-570F-4A9B-8D69-199FDBA5723B}"))
+        foreach ($connection in $networkListManager.GetNetworkConnections()) {
+            $successful = $true
+            try {
+                # .GetNetwork().GetName() sometimes throws
+                $networkName = $connection.GetNetwork().GetName()
+                # Sometimes it doesn't throw, but it's still identifying the connection, so we throw to move into the catch block
+                if ($networkName -eq "Identifying...") {
+                    throw "Still identifying"
+                }
+            }
+            catch {
+                $successful = $false
+                if ($sleepCount -gt $sleepMaxSeconds) {
+                    throw "Could not identify the network connection for network #$networkListIndex after $sleepCount seconds"
+                }
+                Write-EventLogWrapper -message "Network name found to be '$networkName' for network #$networkListIndex after $sleepCount seconds, sleeping for $sleepIntervalSeconds more seconds before trying again..."
+                Start-Sleep -Seconds $sleepIntervalSeconds
+            }
+            $networkListIndex += 1
+        }
+    }
+
     $networkListIndex = 0
     foreach ($connection in $networkListManager.GetNetworkConnections()) {
-
-        # Wait until the connection has been identified by the OS before attempting to set it to private
-        # This works around a weird issue where this task would fail when run in my script,
-        # but work if I logged in to the in-progress packer VM and copy/pasted it into Powershell
-        # It seems that WMI doesn't have access to the network connections right after startup, but does shortly thereafter.
-        # While it can't read the connections, the name of each will be "Identifying...".
-        # When it becomes able to read the conneections, the name will become something like 'example.com' or 'Unidentified network'
-        $sleepCount = 0
-        $sleepIntervalSeconds = 5
-        $sleepMaxSeconds = 60
-        while ($connection.GetNetwork().GetName() -eq "Identifying...") {
-            $sleepCount += $sleepIntervalSeconds
-            Start-Sleep $sleepIntervalSeconds
-            if ($sleepCount -gt $sleepMaxSeconds) {
-                throw "Could not identify the network connection for network #$networkListIndex"
-            }
-        }
-
-        $connName = $connection.GetNetwork().GetName()
-        $message = "Changing connection named '$connName' (network #$networkListIndex) to private... "
-        try {
-            $oldCategory = $connection.GetNetwork().GetCategory()
-            $connection.GetNetwork().SetCategory(1)
-            $newCategory = $connection.GetNetwork().GetCategory()
-            $message += "Successful. Changed connection category from '$oldCategory' to '$newCategory'"
-        }
-        catch {
-            $err = Get-ErrorStackAsString -errorStack $_
-            $message += "FAILURE. Error:`r`n`r`n$err"
-        }
-
+        $message = "Changing connection for network named '$networkName' (network #$networkListIndex) to private... "
+        $oldCategory = $connection.GetNetwork().GetCategory()
+        $connection.GetNetwork().SetCategory(1)
+        $newCategory = $connection.GetNetwork().GetCategory()
+        $message += "Successful. Changed connection category from '$oldCategory' to '$newCategory'"
         Write-EventLogWrapper -message $message
         $networkListIndex += 1
     }
