@@ -3,7 +3,7 @@
     "boxname": "wintriallab-win10-32",
     "version": "1.0.{{isotime \"20060102150405\"}}",
     "description": "Windows Trial Lab: Windows 10 x86",
-    "catalog_root_url": "file://{{env `HOME`}}"
+    "catalog_root_url": "file://{{env `USERPROFILE`}}\\Documents\\Vagrant"
   },
   "builders": [
     {
@@ -31,7 +31,7 @@
       ],
       "vboxmanage": [
         ["setextradata", "global", "GUI/SuppressMessages", "all" ],
-        ["modifyvm", "{{.Name}}", "--memory", "2048" ], 
+        ["modifyvm", "{{.Name}}", "--memory", "2048" ],
         ["modifyvm", "{{.Name}}", "--cpus",   "2" ],
         ["modifyvm", "{{.Name}}", "--clipboard", "bidirectional"],
         ["modifyvm", "{{.Name}}", "--draganddrop", "bidirectional"],
@@ -54,6 +54,7 @@
       "enable_virtualization_extensions": true,
       "ram_size": 2048,
       "cpu": 2,
+      "switch_name": "NAT",
       "floppy_files": [
         "./Autounattend.xml",
         "../../scripts/win-updates.ps1",
