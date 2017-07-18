@@ -1,5 +1,6 @@
 [cmdletbinding()] Param(
-    [switch] $SkipWindowsUpdates
+    [switch] $SkipWindowsUpdates,
+    [switch] $SetStaticIp
 )
 
 import-module $PSScriptRoot\wintriallab-postinstall.psm1
@@ -14,6 +15,19 @@ Invoke-ScriptblockAndCatch {
         $message += "$($var.Name) = $($var.Value)`r`n"
     }
     Write-EventLogWrapper -message $message
+}
+
+if ($SetStaticIp) {
+    Invoke-ScriptblockAndCatch {
+        $interfaceName = "Ethernet"
+        $interfaceAddrFam = "IPv4"
+        $newAddress = "172.20.80.101"
+        $newGateway = "172.20.80.1"
+        $newPrefix = "24"
+        $interface = Get-NetIpAddress -InterfaceAlias $interfaceName -AddressFamily $interfaceAddrFam
+        New-NetIpAddress -InterfaceIndex $interface.InterfaceIndex -IPAddress $newAddress -PrefixLength $newPrefix -DefaultGateway $newGateway
+        Set-DnsClientServerAddress -InterfaceAlias $interfaceName -ServerAddresses @("8.8.8.8", "8.8.4.4")
+    }
 }
 
 # Operations changing the state of the VM and other things that might be more inclined to fail go here

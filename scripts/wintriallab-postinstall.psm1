@@ -1128,6 +1128,7 @@ function Set-AllNetworksToPrivate {
                     throw "Could not identify the network connection for network #$networkListIndex after $sleepCount seconds"
                 }
                 Write-EventLogWrapper -message "Network name found to be '$networkName' for network #$networkListIndex after $sleepCount seconds, sleeping for $sleepIntervalSeconds more seconds before trying again..."
+                $sleepCount += $sleepIntervalSeconds
                 Start-Sleep -Seconds $sleepIntervalSeconds
             }
             $networkListIndex += 1
