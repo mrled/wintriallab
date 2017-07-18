@@ -21,6 +21,13 @@ Vagrant:
 - Store passwords securely and change them automatically on logon... not sure how to do this yet though
 - Add optional functionality that can back up an entire user, including `%APPDATA%`/`%LOCALAPPDATA%`, and restore it to a new Vagrant machine. This would be intended to work with long-running boxes that are still using Windows trial keys.
 
+Cloud builder:
+
+- I'd love to have a script that can bring up a Hyper-V server in the cloud (probably AWS), builds as many of these boxes as possible, and then saves them somewhere.
+- We need a public place to save the Vagrant catalog. Ideally this would be password protected, but use expandable cloud storage (that is, without using a VM to host it), but that requires HTTP basic authentication, which S3 doesn't support natively.
+- We'd also need to do the full automation of the deployment of the cloud Hyper-V server, orchestrating the building of the Vagrant base boxes with Packer
+- We might take the opportunity to write some automated integration tests, if we can figure out a good way to do that.
+
 Wishlist (no plans to attempt these, but I wish I had time to)
 
 - Use some kind of templating system for Autounattend.xml files? Looks like the [inductor](https://github.com/joefitzgerald/inductor) project from @joefitzgerald (also responsible for the packer-windows project that wintriallab is based on) was intended to do this
