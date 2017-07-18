@@ -42,18 +42,33 @@ There are some Vagrant boxes in the `vagrant` directory. They are intended as ex
 
     Furthermore, Hyper-V bridged networks only bridge to one adapter at a time, which is a pain if you switch between Ethernet and Wifi.
 
-    Our recommendation is to [create a NAT network](https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/user-guide/setup-nat-network), which can only be done with Powershell for the time being, and then setting the `switch_name` parameter for the `hyperv-iso` builder in your Packerfile so your VM will use it.
+    a.  For Packer: a NAT option
 
-    We wrote a `New-HyperVNatNetwork.ps1` script can create the network for you... however, it is running into intermittent problems. It looks like under some conditions a different version of the `New-NetNat` cmdlet gets loaded? And the parameter set changes so that `-InternalIPInterfaceAddressPrefix` is no longer a valid parameter? Here are some links
+        Our recommendation is to [create a NAT network](https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/user-guide/setup-nat-network), which can only be done with Powershell for the time being, and then setting the `switch_name` parameter for the `hyperv-iso` builder in your Packerfile so your VM will use it.
 
-    -   [The version of the instructions I used](https://github.com/Microsoft/Virtualization-Documentation/blob/2cf6d04c4a8de0148a2f981d21bec72cff23f6e8/virtualization/hyper-v-on-windows/user-guide/setup-nat-network.md) where it says to use `-InternalIPInterfaceAddressPrefix`
-    -   [Someone else](https://github.com/Microsoft/Virtualization-Documentation/issues/361) ran into this same problem 6 months ago
-    -   Looks like Docker uses NAT as well... maybe some insight can be gained from [this](https://docs.microsoft.com/en-us/virtualization/windowscontainers/manage-containers/container-networking?
-    -   Comment on [this page](https://4sysops.com/archives/native-nat-in-windows-10-hyper-v-using-a-nat-virtual-switch/) says "The following powershell as administrator worked today for me in Win 10 Enterprise: `Add-NetNatStaticMapping -NatName NAT -Protocol TCP -ExternalIPAddress 0.0.0.0 -InternalIPAddress 10.0.75.X -InternalPort 22 -ExternalPort 20122; Get-NetNatStaticMapping`"
-    -   Looks like maybe it got [intentionally removed](https://blogs.technet.microsoft.com/virtualization/2016/05/14/what-happened-to-the-nat-vmswitch/) from Server? Would this have affected Win 10?
-    -   Hahahahahaha, [this guy](https://thomasvochten.com/archive/2014/01/hyper-v-nat/) suggests installing VMware Player, using the VMnet8 NAT adapter it creates, and creating a new vswitch on that adapter. Bonus: you get DHCP this way too! Lol
+        We wrote a `New-HyperVNatNetwork.ps1` script can create the network for you... however, it is running into intermittent problems. It looks like under some conditions a different version of the `New-NetNat` cmdlet gets loaded? And the parameter set changes so that `-InternalIPInterfaceAddressPrefix` is no longer a valid parameter? Here are some links
 
-    One major caveat is that *there is no DHCP on your NAT network*, meaning that all guest VMs, including Packer VMs, on the NAT network need to manually configure their IP address, default gateway, and DNS servers. This isn't automated yet, but we plan to automate it.
+        -   [The version of the instructions I used](https://github.com/Microsoft/Virtualization-Documentation/blob/2cf6d04c4a8de0148a2f981d21bec72cff23f6e8/virtualization/hyper-v-on-windows/user-guide/setup-nat-network.md) where it says to use `-InternalIPInterfaceAddressPrefix`
+        -   [Someone else](https://github.com/Microsoft/Virtualization-Documentation/issues/361) ran into this same problem 6 months ago
+        -   Looks like Docker uses NAT as well... maybe some insight can be gained from [this](https://docs.microsoft.com/en-us/virtualization/windowscontainers/manage-containers/container-networking?
+        -   Comment on [this page](https://4sysops.com/archives/native-nat-in-windows-10-hyper-v-using-a-nat-virtual-switch/) says "The following powershell as administrator worked today for me in Win 10 Enterprise: `Add-NetNatStaticMapping -NatName NAT -Protocol TCP -ExternalIPAddress 0.0.0.0 -InternalIPAddress 10.0.75.X -InternalPort 22 -ExternalPort 20122; Get-NetNatStaticMapping`"
+        -   Looks like maybe it got [intentionally removed](https://blogs.technet.microsoft.com/virtualization/2016/05/14/what-happened-to-the-nat-vmswitch/) from Server? Would this have affected Win 10?
+        -   Hahahahahaha, [this guy](https://thomasvochten.com/archive/2014/01/hyper-v-nat/) suggests installing VMware Player, using the VMnet8 NAT adapter it creates, and creating a new vswitch on that adapter. Bonus: you get DHCP this way too! Lol
+
+        One major caveat is that *there is no DHCP on your NAT network*, meaning that all guest VMs, including Packer VMs, on the NAT network need to manually configure their IP address, default gateway, and DNS servers. This isn't automated yet, but we plan to automate it.
+
+    b.  For Packer: statically assign IP addresses
+
+        Unfortunately, the NAT networking in Windows is in a state of flux. It turns out that staticaly assigning an IP address may work better for now.
+
+        To do that, the static address must be hardcoded in `autounattend-postinstall.ps1`. At the time of this writing, we have done that, but it requires your virtual network to have a matching configuration.
+
+    c.  For Vagrant: use the public network
+
+        If you can, the easiest thing to do is to use a public network in HyperV, like this:
+
+            config.vm.network :public_network, :adapter=>1, type:"dhcp", :bridge=>'HyperVWifiSwitch'
+
 
 ## To do
 
