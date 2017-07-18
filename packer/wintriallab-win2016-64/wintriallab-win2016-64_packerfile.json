@@ -1,0 +1,99 @@
+{
+  "variables": {
+    "boxname": "wintriallab-win2016-64",
+    "version": "1.0.{{isotime \"20060102150405\"}}",
+    "description": "Windows Trial Lab: Windows 10 x86",
+    "catalog_root_url": "file:///C:/Users/mledbetter/Documents/Vagrant",
+    "iso_url": "http://care.dlservice.microsoft.com/dl/download/1/4/9/149D5452-9B29-4274-B6B3-5361DBDA30BC/14393.0.161119-1705.RS1_REFRESH_SERVER_EVAL_X64FRE_EN-US.ISO",
+    "iso_checksum_type": "md5",
+    "iso_checksum": "70721288bbcdfe3239d8f8c0fae55f1f"
+  },
+  "builders": [
+    {
+      "type": "virtualbox-iso",
+      "iso_url": "{{user `iso_url`}}",
+      "iso_checksum_type": "{{user `iso_checksum_type`}}",
+      "iso_checksum": "{{user `iso_checksum`}}",
+
+      "headless": true,
+      "boot_wait": "2m",
+      "communicator": "winrm",
+      "winrm_username": "vagrant",
+      "winrm_password": "V@grant123",
+      "winrm_timeout": "24h",
+      "shutdown_command": "shutdown /s /t 10 /f /d p:4:1 /c \"Packer Shutdown\"",
+      "guest_os_type": "Windows2016_64",
+      "disk_size": 61440,
+      "guest_additions_mode": "attach",
+      "floppy_files": [
+        "./Autounattend.xml",
+        "../../scripts/win-updates.ps1",
+        "../../scripts/enable-winrm.ps1",
+        "../../scripts/wintriallab-postinstall.psm1",
+        "../../scripts/autounattend-postinstall.ps1",
+        "../../scripts/provisioner-postinstall.ps1"
+      ],
+      "vboxmanage": [
+        ["setextradata", "global", "GUI/SuppressMessages", "all" ],
+        ["modifyvm", "{{.Name}}", "--memory", "4096" ],
+        ["modifyvm", "{{.Name}}", "--cpus",   "2" ],
+        ["modifyvm", "{{.Name}}", "--clipboard", "bidirectional"],
+        ["modifyvm", "{{.Name}}", "--draganddrop", "bidirectional"],
+        ["modifyvm", "{{.Name}}", "--accelerate2dvideo", "on"],
+        ["modifyvm", "{{.Name}}", "--vram", 128]
+      ]
+    },
+
+    {
+      "type": "hyperv-iso",
+      "iso_url": "{{user `iso_url`}}",
+      "iso_checksum_type": "{{user `iso_checksum_type`}}",
+      "iso_checksum": "{{user `iso_checksum`}}",
+
+      "boot_wait": "2m",
+      "communicator": "winrm",
+
+      "ssh_username": "vagrant",
+      "ssh_password": "V@grant123",
+      "ssh_timeout": "24h",
+
+      "winrm_username": "vagrant",
+      "winrm_password": "V@grant123",
+      "winrm_timeout": "24h",
+
+      "shutdown_command": "shutdown /s /t 10 /f /d p:4:1 /c \"Packer Shutdown\"",
+      "disk_size": 61440,
+      "enable_virtualization_extensions": true,
+      "ram_size": 4096,
+      "cpu": 2,
+      "switch_name": "NAT",
+      "floppy_files": [
+        "./Autounattend.xml",
+        "../../scripts/win-updates.ps1",
+        "../../scripts/enable-winrm.ps1",
+        "../../scripts/wintriallab-postinstall.psm1",
+        "../../scripts/autounattend-postinstall.ps1",
+        "../../scripts/provisioner-postinstall.ps1"
+      ]
+    }
+
+  ],
+  "provisioners": [
+    {
+      "type": "powershell",
+      "inline": ["A:\\provisioner-postinstall.ps1 -Verbose"]
+    }
+  ],
+  "post-processors": [
+    [
+      { "type": "vagrant" },
+      {
+        "type": "caryatid",
+        "name": "{{user `boxname`}}",
+        "version": "{{user `version`}}",
+        "description": "{{user `description`}}",
+        "catalog_root_url": "{{user `catalog_root_url`}}"
+      }
+    ]
+  ]
+}
