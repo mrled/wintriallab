@@ -1,0 +1,128 @@
+---
+"$schema": https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#
+contentVersion: 1.0.0.0
+
+parameters:
+  storageAccountName:
+    type: string
+    metadata:
+      description: Storage Account Name; must be a valid Azure DNS hostname
+  builderVmAdminPassword:
+    type: securestring
+  builderVmSize:
+    type: string
+    defaultValue: Standard_D2v3
+    metadata:
+      # https://azure.microsoft.com/en-us/blog/introducing-the-new-dv3-and-ev3-vm-sizes/
+      description: Size of the VM. Note that only Standard Dv3 and Ev3 VMs support the nested virtualization we use.
+
+variables:
+  apiVersion: 2015-06-15
+
+  storageAccountType: Standard_LRS
+  storageAccountId: "[concat('Microsoft.Storage/storageAccounts/', parameters('storageAccountName'))]"
+  storageAccountUri: "[concat('http://',parameters('storageAccountName'), '.blob.core.windows.net')]"
+
+  builderVmName: wintrialbuilder
+  builderVmImageSku: 2016-Datacenter
+  builderVmOsDiskName: "[concat(variables('builderVmName'), '-osdisk')"
+  builderVmOsDiskUri: "[concat(parameters('storageAccountUri'), '/vhds/', variables('builderVmOsDiskName'), 'vhd')]"
+  builderVmAdminUsername: WinTrialAdmin
+
+  vnetName: wintrialnet
+  vnetId: "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+  vnetAddressPrefix: 172.16.0.0/24
+
+  subnetName: wintrialsubnet
+  subnetPrefix: "[variables('vnetAddressPrefix')]"
+  subnetId: "[concat(variables('vnetId'), '/subnets/', variables('subnetName'))]"
+
+  pubIpAddrType: Dynamic
+  pubIpAddrName: builderPubIp
+  pubIpAddrId: "[resourceId('Microsoft.Network/publicIPAddresses', variables('pubIpAddrName'))]"
+
+  nicName: builderNic
+  nicId: "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+
+  imagePublisher: MicrosoftWindowsServer
+  imageOffer: WindowsServer
+
+resources:
+- type: Microsoft.Storage/storageAccounts
+  name: "[parameters('storageAccountName')]"
+  apiVersion: "[variables('apiVersion')]"
+  location: "[resourceGroup().location]"
+  properties:
+    accountType: "[variables('storageAccountType')]"
+
+- type: Microsoft.Network/publicIPAddresses
+  name: "[variables('pubIpAddrName')]"
+  apiVersion: "[variables('apiVersion')]"
+  location: "[resourceGroup().location]"
+  properties:
+    publicIPAllocationMethod: "[variables('pubIpAddrType')]"
+
+- type: Microsoft.Network/virtualNetworks
+  name: "[variables('vnetName')]"
+  apiVersion: "[variables('apiVersion')]"
+  location: "[resourceGroup().location]"
+  properties:
+    addressSpace:
+      addressPrefixes:
+      - "[variables('vnetAddressPrefix')]"
+    subnets:
+    - name: "[variables('subnetName')]"
+      properties:
+        addressPrefix: "[variables('subnetPrefix')]"
+
+- type: Microsoft.Network/networkInterfaces
+  name: "[variables('nicName')]"
+  apiVersion: "[variables('apiVersion')]"
+  location: "[resourceGroup().location]"
+  dependsOn:
+  - "[variables('pubIpAddrId')]"
+  - "[variables('vnetId')]"
+  properties:
+    ipConfigurations:
+    - name: ipconfig1
+      properties:
+        privateIPAllocationMethod: Dynamic
+        publicIPAddress:
+          id: "[variables('nicId')]"
+        subnet:
+          id: "[variables('subnetId')]"
+
+- type: Microsoft.Compute/virtualMachines
+  name: "[variables('builderVmName')]"
+  apiVersion: "[variables('apiVersion')]"
+  location: "[resourceGroup().location]"
+  dependsOn:
+  - "[variables('storageAccountId')]"
+  - "[variables('nicId')]"
+  properties:
+    hardwareProfile:
+      builderVmSize: "[parameters('builderVmSize')]"
+    osProfile:
+      computerName: "[variables('builderVmName')]"
+      adminUsername: "[variables('builderVmAdminUsername')]"
+      adminPassword: "[parameters('builderVmAdminPassword')]"
+    storageProfile:
+      imageReference:
+        publisher: "[variables('imagePublisher')]"
+        offer: "[variables('imageOffer')]"
+        sku: "[variables('builderVmImageSku')]"
+        version: latest
+      osDisk:
+        name: builderVmOsDiskName
+        vhd:
+          uri: "[variables('builderVmOsDiskUri')]"
+        caching: ReadWrite
+        createOption: FromImage
+    networkProfile:
+      networkInterfaces:
+      - id: "[variables('nicId')]"
+
+outputs:
+  builderIpAddress:
+    type: string
+    value: "[reference(variables('pubIpAddrName')).properties.ipAddress]"
