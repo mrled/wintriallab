@@ -11,7 +11,7 @@ parameters:
     type: securestring
   builderVmSize:
     type: string
-    defaultValue: Standard_D2v3
+    defaultValue: Standard_D2_v3
     metadata:
       # https://azure.microsoft.com/en-us/blog/introducing-the-new-dv3-and-ev3-vm-sizes/
       description: Size of the VM. Note that only Standard Dv3 and Ev3 VMs support the nested virtualization we use.
@@ -25,9 +25,20 @@ variables:
 
   builderVmName: wintrialbuilder
   builderVmImageSku: 2016-Datacenter
-  builderVmOsDiskName: "[concat(variables('builderVmName'), '-osdisk')"
-  builderVmOsDiskUri: "[concat(parameters('storageAccountUri'), '/vhds/', variables('builderVmOsDiskName'), 'vhd')]"
+  builderVmOsDiskName: "[concat(variables('builderVmName'), '-osdisk')]"
+  builderVmOsDiskUri: "[concat(variables('storageAccountUri'), '/vhds/', variables('builderVmOsDiskName'), '.vhd')]"
   builderVmAdminUsername: WinTrialAdmin
+
+  winTrialLabDlPath:    "$env:TEMP\\winTrialLab.zip"
+  winTrialLabZipUri:    "https://github.com/mrled/dhd/archive/master.zip"
+  winTrialLabDir:       "$env:USERPROFILE\\WinTrialLab"
+
+  deployExtName: wtlDeployExtension
+  deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ',             variables('winTrialLabZipUri'), ' -OutFile ', variables('winTrialLabDlPath'), ';')]"
+  deployExtUnpackCmd:   "[concat('Expand-Archive    -DestinationPath ', variables('winTrialLabDir'),    ' -Path ',    variables('winTrialLabDlPath'), ';')]"
+  deployExtInitCmd:     "[concat('& ', variables('winTrialLabDir'), '\\azure\\deployInit.ps1', ';')]"
+  deployExtCommand:     "[concat(variables('deployExtDownloadCmd'), variables('deployExtUnpackCmd'), variables('deployExtInitCmd'))]"
+  deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtCommand'), '} \"')]"
 
   vnetName: wintrialnet
   vnetId: "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
@@ -88,7 +99,7 @@ resources:
       properties:
         privateIPAllocationMethod: Dynamic
         publicIPAddress:
-          id: "[variables('nicId')]"
+          id: "[variables('pubIpAddrId')]"
         subnet:
           id: "[variables('subnetId')]"
 
@@ -101,7 +112,7 @@ resources:
   - "[variables('nicId')]"
   properties:
     hardwareProfile:
-      builderVmSize: "[parameters('builderVmSize')]"
+      vmSize: "[parameters('builderVmSize')]"
     osProfile:
       computerName: "[variables('builderVmName')]"
       adminUsername: "[variables('builderVmAdminUsername')]"
@@ -113,7 +124,7 @@ resources:
         sku: "[variables('builderVmImageSku')]"
         version: latest
       osDisk:
-        name: builderVmOsDiskName
+        name: "[variables('builderVmOsDiskName')]"
         vhd:
           uri: "[variables('builderVmOsDiskUri')]"
         caching: ReadWrite
@@ -121,8 +132,22 @@ resources:
     networkProfile:
       networkInterfaces:
       - id: "[variables('nicId')]"
+  resources:
+  - type: extensions
+    name: "[variables('deployExtName')]"
+    apiVersion: "[variables('apiVersion')]"
+    location: "[resourceGroup().location]"
+    dependsOn:
+      - "[variables('builderVmName')]"
+    properties:
+      publisher: Microsoft.Compute
+      type: CustomScriptExtension
+      typeHandlerVersion: "1.8"
+      autoUpgradeMinorVersion: true
+      settings:
+        commandToExecute:  "[variables('deployExtInvocation')]"
 
 outputs:
   builderIpAddress:
     type: string
-    value: "[reference(variables('pubIpAddrName')).properties.ipAddress]"
+    value: "[reference(variables('pubIpAddrName')).ipAddress]"
