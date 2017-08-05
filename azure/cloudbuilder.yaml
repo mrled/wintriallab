@@ -29,13 +29,16 @@ variables:
   builderVmOsDiskUri: "[concat(variables('storageAccountUri'), '/vhds/', variables('builderVmOsDiskName'), '.vhd')]"
   builderVmAdminUsername: WinTrialAdmin
 
-  winTrialLabDlPath:    "$env:TEMP\\winTrialLab.zip"
-  winTrialLabZipUri:    "https://github.com/mrled/dhd/archive/master.zip"
-  winTrialLabDir:       "$env:USERPROFILE\\WinTrialLab"
+  winTrialLabDlPath:      "${env:SystemDrive}\\winTrialLab.zip"
+  winTrialLabRepoBaseUri: "https://github.com/mrled/wintriallab"
+  winTrialLabRepoBranch:  "azure-builder"
+  winTrialLabZipUri:      "[concat(variables('winTrialLabRepoBaseUri'), '/archive/', variables('winTrialLabRepoBranch'), '.zip')]"
+  winTrialLabParentDir:   "${env:SystemDrive}\\"
+  winTrialLabDir:         "[concat(variables('winTrialLabParentDir'), '\\wintriallab-', variables('winTrialLabRepoBranch'))]"
 
   deployExtName: wtlDeployExtension
-  deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ',             variables('winTrialLabZipUri'), ' -OutFile ', variables('winTrialLabDlPath'), ';')]"
-  deployExtUnpackCmd:   "[concat('Expand-Archive    -DestinationPath ', variables('winTrialLabDir'),    ' -Path ',    variables('winTrialLabDlPath'), ';')]"
+  deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ', variables('winTrialLabZipUri'), ' -OutFile ', variables('winTrialLabDlPath'), ';')]"
+  deployExtUnpackCmd:   "[concat('Expand-Archive -Force -DestinationPath ', variables('winTrialLabParentDir'), ' -Path ', variables('winTrialLabDlPath'), ';')]"
   deployExtInitCmd:     "[concat('& ', variables('winTrialLabDir'), '\\azure\\deployInit.ps1', ';')]"
   deployExtCommand:     "[concat(variables('deployExtDownloadCmd'), variables('deployExtUnpackCmd'), variables('deployExtInitCmd'))]"
   deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtCommand'), '} \"')]"

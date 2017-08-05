@@ -97,10 +97,10 @@ def main(*args, **kwargs):
     with open(parsed.arm_template) as tf:
         template = yaml.load(tf)
 
-    if parsed.save_json_template:
-        json_arm_template = parsed.arm_template.replace('.yaml', '.json')
-        with open(json_arm_template, 'w+') as jtf:
-            jtf.write(json.dumps(template))
+    # if parsed.save_json_template:
+    #     json_arm_template = parsed.arm_template.replace('.yaml', '.json')
+    #     with open(json_arm_template, 'w+') as jtf:
+    #         jtf.write(json.dumps(template))
 
     template_params = {
         'storageAccountName': parsed.storage_account_name,
