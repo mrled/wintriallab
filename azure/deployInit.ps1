@@ -73,7 +73,7 @@ function Invoke-PathExecutable {
         } else {
             Write-EventLogWrapper -message "Command line '$commandLine' exited successfully with code '$LASTEXITCODE'"
         }
-    catch {
+    } catch {
         Write-EventLogWrapper -message "When attempting to run command '$commandLine', got error '$_'"
         throw $_
     }
