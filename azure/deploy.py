@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-import json
+# import json
 import logging
 import os
 import sys
@@ -15,8 +15,8 @@ from azure.mgmt.resource import ResourceManagementClient
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 
 
-def getlogger():
-    log = logging.getLogger('wrapdocker')
+def getlogger(name='deploy-wintriallab-cloud-builder'):
+    log = logging.getLogger(name)
     log.setLevel(logging.WARNING)
     conhandler = logging.StreamHandler()
     conhandler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
@@ -46,9 +46,9 @@ def parseargs(*args, **kwargs):
         '--arm-template', type=resolvepath,
         default=os.path.join(scriptdir, 'cloudbuilder.yaml'),
         help="Location of the ARM template")
-    parser.add_argument(
-        '--save-json-template', type=resolvepath,
-        help="Save the JSON version of the YAML ARM template. Azure itself only understands JSON, and we have to convert the template to a Python dict (as the json.load() function does) before passing it to the Azure SDK. Saving the JSON version of the template first can aid in debugging.")
+    # parser.add_argument(
+    #     '--save-json-template', type=resolvepath,
+    #     help="Save the JSON version of the YAML ARM template. Azure itself only understands JSON, and we have to convert the template to a Python dict (as the json.load() function does) before passing it to the Azure SDK. Saving the JSON version of the template first can aid in debugging.")
     parser.add_argument(
         '--group-location', default='westus2',
         help="The resource group location. Note that only a few resource groups support the types of VMs we require; see also https://azure.microsoft.com/en-us/blog/introducing-the-new-dv3-and-ev3-vm-sizes/")
