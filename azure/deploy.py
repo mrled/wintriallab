@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-# import json
+import json
 import logging
 import os
 import sys
@@ -27,12 +27,20 @@ def getlogger(name='deploy-wintriallab-cloud-builder'):
 log = getlogger()
 
 
+def strace():
+    import pdb
+    pdb.set_trace()
+
+
 def resolvepath(path):
     return os.path.realpath(os.path.normpath(os.path.expanduser(path)))
 
 
 def parseargs(*args, **kwargs):
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        'action', choices=['deploy', 'delete', 'convertyaml'],
+        help='Action to perform. Either deploy the ARM template to the resource group, delete the entire resource group, or convert the ARM template from YAML to JSON (for debugging purposes).')
     parser.add_argument(
         '--debug', '-v', action='store_true',
         help="Show debug messages")
@@ -46,9 +54,6 @@ def parseargs(*args, **kwargs):
         '--arm-template', type=resolvepath,
         default=os.path.join(scriptdir, 'cloudbuilder.yaml'),
         help="Location of the ARM template")
-    # parser.add_argument(
-    #     '--save-json-template', type=resolvepath,
-    #     help="Save the JSON version of the YAML ARM template. Azure itself only understands JSON, and we have to convert the template to a Python dict (as the json.load() function does) before passing it to the Azure SDK. Saving the JSON version of the template first can aid in debugging.")
     parser.add_argument(
         '--group-location', default='westus2',
         help="The resource group location. Note that only a few resource groups support the types of VMs we require; see also https://azure.microsoft.com/en-us/blog/introducing-the-new-dv3-and-ev3-vm-sizes/")
@@ -90,34 +95,39 @@ def main(*args, **kwargs):
 
     resource = ResourceManagementClient(azcreds, parsed.subscription_id)
 
-    result = resource.resource_groups.create_or_update(
-        parsed.group_name, {'location': parsed.group_location})
-    log.info(f"Azure resource group: {result}")
-
     with open(parsed.arm_template) as tf:
         template = yaml.load(tf)
 
-    # if parsed.save_json_template:
-    #     json_arm_template = parsed.arm_template.replace('.yaml', '.json')
-    #     with open(json_arm_template, 'w+') as jtf:
-    #         jtf.write(json.dumps(template))
+    if parsed.action == 'convertyaml':
+        json_arm_template = parsed.arm_template.replace('.yaml', '.json')
+        with open(json_arm_template, 'w+') as jtf:
+            jtf.write(json.dumps(template))
 
-    template_params = {
-        'storageAccountName': parsed.storage_account_name,
-        'builderVmAdminPassword': parsed.builder_vm_admin_password,
-        'builderVmSize': parsed.builder_vm_size}
-    template_params = {k: {'value': v} for k, v in template_params.items()}
-    deploy_params = {
-        'mode': 'incremental',
-        'template': template,
-        'parameters': template_params}
-    async_operation = resource.deployments.create_or_update(
-        parsed.group_name, parsed.deployment_name, deploy_params)
-    result = async_operation.result()
-    msg = "Deployment completed. Outputs:"
-    for k, v in result.properties.outputs.items():
-        msg += f"\n- {k} = {str(v['value'])}"
-    print(msg)
+    elif parsed.action == 'delete':
+        resource.resource_groups.delete(parsed.group_name).wait()
+
+    elif parsed.action == 'deploy':
+
+        result = resource.resource_groups.create_or_update(
+            parsed.group_name, {'location': parsed.group_location})
+        log.info(f"Azure resource group: {result}")
+
+        template_params = {
+            'storageAccountName': parsed.storage_account_name,
+            'builderVmAdminPassword': parsed.builder_vm_admin_password,
+            'builderVmSize': parsed.builder_vm_size}
+        template_params = {k: {'value': v} for k, v in template_params.items()}
+        deploy_params = {
+            'mode': 'incremental',
+            'template': template,
+            'parameters': template_params}
+        async_operation = resource.deployments.create_or_update(
+            parsed.group_name, parsed.deployment_name, deploy_params)
+        result = async_operation.result()
+        msg = "Deployment completed. Outputs:"
+        for k, v in result.properties.outputs.items():
+            msg += f"\n- {k} = {str(v['value'])}"
+        print(msg)
 
 
 if __name__ == '__main__':
