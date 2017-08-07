@@ -4,6 +4,8 @@ import argparse
 import json
 import logging
 import os
+import secrets
+import string
 import sys
 
 import yaml
@@ -34,6 +36,26 @@ def strace():
 
 def resolvepath(path):
     return os.path.realpath(os.path.normpath(os.path.expanduser(path)))
+
+
+def genpass(length=24):
+    """Generate a passphrase that will meet default Windows complexity reqs"""
+
+    symbols = '!@#$%^&*()'
+    alphabet = string.ascii_letters + string.digits + symbols
+
+    def testwinpass(password):
+        """Test whether a password will meet default Windows complexity reqs"""
+        return (
+            any(c.islower() for c in password) and
+            any(c.isupper() for c in password) and
+            any(c.isdigit() for c in password) and
+            any(c in symbols for c in password))
+
+    while True:
+        password = ''.join(secrets.choice(alphabet) for i in range(length))
+        if testwinpass(password):
+            return password
 
 
 def parseargs(*args, **kwargs):
@@ -73,7 +95,7 @@ def parseargs(*args, **kwargs):
         '--subscription-id', required=True,
         help="The Azure subscription ID (GUID)")
     parser.add_argument(
-        '--builder-vm-admin-password', required=True,
+        '--builder-vm-admin-password', default=genpass(),
         help="The admin password for the builder VM")
     parser.add_argument(
         '--builder-vm-size', default='Standard_D2_v3',
@@ -102,6 +124,7 @@ def main(*args, **kwargs):
         json_arm_template = parsed.arm_template.replace('.yaml', '.json')
         with open(json_arm_template, 'w+') as jtf:
             jtf.write(json.dumps(template))
+        print(f"Converted JSON template: {json_arm_template}")
 
     elif parsed.action == 'delete':
         resource.resource_groups.delete(parsed.group_name).wait()
@@ -124,6 +147,7 @@ def main(*args, **kwargs):
         async_operation = resource.deployments.create_or_update(
             parsed.group_name, parsed.deployment_name, deploy_params)
         result = async_operation.result()
+
         msg = "Deployment completed. Outputs:"
         for k, v in result.properties.outputs.items():
             msg += f"\n- {k} = {str(v['value'])}"

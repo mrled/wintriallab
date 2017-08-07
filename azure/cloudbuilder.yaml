@@ -17,7 +17,9 @@ parameters:
       description: Size of the VM. Note that only Standard Dv3 and Ev3 VMs support the nested virtualization we use.
 
 variables:
-  apiVersion: 2015-06-15
+
+  # This must be a *string* value, or else it gets turned into a Date object in deploy.py
+  apiVersion: "2015-06-15"
 
   storageAccountType: Standard_LRS
   storageAccountId: "[concat('Microsoft.Storage/storageAccounts/', parameters('storageAccountName'))]"
@@ -151,6 +153,9 @@ resources:
         commandToExecute:  "[variables('deployExtInvocation')]"
 
 outputs:
-  builderIpAddress:
-    type: string
-    value: "[reference(variables('pubIpAddrName')).ipAddress]"
+  builderConnectionInformation:
+    type: object
+    value:
+      Username: "[variables('builderVmAdminUsername')]"
+      Password: "[parameters('builderVmAdminPassword')]"
+      Public IP Address: "[reference(variables('pubIpAddrName')).ipAddress]"
