@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import pdb
 import secrets
 import string
 import sys
@@ -30,9 +31,26 @@ def getlogger(name='deploy-wintriallab-cloud-builder'):
 log = getlogger()
 
 
-def strace():
-    import pdb
-    pdb.set_trace()
+strace = pdb.set_trace
+
+
+def idb_excepthook(type, value, tb):
+    """Call an interactive debugger in post-mortem mode
+
+    If you do "sys.excepthook = idb_excepthook", then an interactive debugger
+    will be spawned at an unhandled exception
+    """
+    if hasattr(sys, 'ps1') or not sys.stderr.isatty():
+        # we are in interactive mode or we don't have a tty-like
+        # device, so we call the default hook
+        sys.__excepthook__(type, value, tb)
+    else:
+        import traceback
+        # we are NOT in interactive mode, print the exception...
+        traceback.print_exception(type, value, tb)
+        print
+        # ...then start the debugger in post-mortem mode.
+        pdb.pm()
 
 
 def resolvepath(path):
@@ -40,7 +58,11 @@ def resolvepath(path):
 
 
 def genpass(length=24):
-    """Generate a passphrase that will meet default Windows complexity reqs"""
+    """Generate a passphrase that will meet default Windows complexity reqs
+
+    Is this like, a good idea? Idk, maybe not. I'm hoping that whatever is
+    wrong with my algorithm is worked around by the length.
+    """
 
     symbols = '!@#$%^&*()'
     alphabet = string.ascii_letters + string.digits + symbols
@@ -57,6 +79,91 @@ def genpass(length=24):
         password = ''.join(secrets.choice(alphabet) for i in range(length))
         if testwinpass(password):
             return password
+
+
+def tname2tid(name):
+    """Convert a tenant name to a tenant ID
+
+    Use the unauthenticated Azure public API - no credentials required
+
+    name: The name of the tenant, like example.onmicrosoft.com
+    """
+    log.info(f"Attempting to obtain tenant ID from the {name} Azure tenant...")
+    # This can be done with a simple unauthenticated call to the Azure API
+    # We obtain it from the "token endpoint", also called the STS URL
+    oidcfg_url = f'https://login.windows.net/{name}/.well-known/openid-configuration'
+    oidcfg = json.loads(urllib.request.urlopen(oidcfg_url).read().decode())
+    tenant_id = oidcfg['token_endpoint'].split('/')[3]
+    log.info(f"Found a tenant ID of {tenant_id}")
+    return tenant_id
+
+
+def azureauth(tenantname, spid, spkey, subscid):
+    """Authenticate to Azure, and return a ResourceManagementClient
+
+    tenantname: name of the Azure tenant, like example.onmicrosoft.com
+    spid:       service principal id, which is a GUID
+    spkey:      service principal secret key
+    subscid:    id of the Azure subscription
+    """
+    tenant_id = tname2tid(tenantname)
+    return ResourceManagementClient(
+        ServicePrincipalCredentials(
+            client_id=spid, secret=spkey, tenant=tenant_id),
+        subscid)
+
+
+def templparam(inparams):
+    """Construct an ARM template parameters object from a Python dictionary
+
+    For some reason, ARM template parameters require weird objects. Sorry.
+
+    inparams: a python dictionary like {'k1': 'v1', 'k2': 'v2'}
+    """
+    return {k: {'value': v} for k, v in inparams.items()}
+
+
+def deploytempl(
+        resourceclient,
+        groupname,
+        grouplocation,
+        storageacct,
+        vmadminpass,
+        vmsize,
+        template,
+        deploymentname,
+        deploymode='incremental'):
+    """Deploy the YAML cloud builder template
+
+    resourceclient: an authenticated ResourceManagementClient instance
+    groupname:      the name of the resource group
+    grouplocation:  the location for the resource group
+    storageacct:    the name of the storage account
+    vmadminpass:    a password to use for the cloud builder VM
+    vmsize:         the size of the cloud builder VM
+    template:       the path to the ARM template
+    deploymentname: a name for this deployment
+    deploymode:     the Azure RM deployment mode
+    """
+
+    result = resourceclient.resource_groups.create_or_update(
+        groupname, {'location': grouplocation})
+    log.info(f"Azure resource group: {result}")
+
+    deploy_params = {
+        'mode': deploymode,
+        'template': template,
+        'parameters': templparam({
+            'storageAccountName': storageacct,
+            'builderVmAdminPassword': vmadminpass,
+            'builderVmSize': vmsize})
+    }
+
+    async_operation = resourceclient.deployments.create_or_update(
+        groupname, deploymentname, deploy_params)
+
+    # .result() blocks until the operation is complete
+    return async_operation.result()
 
 
 def parseargs(*args, **kwargs):
@@ -108,55 +215,35 @@ def parseargs(*args, **kwargs):
 def main(*args, **kwargs):
     parsed = parseargs(args, kwargs)
     if parsed.debug:
+        sys.excepthook = idb_excepthook
         parsed.save_json_template = True
         log.setLevel(logging.DEBUG)
 
     with open(parsed.arm_template) as tf:
         template = yaml.load(tf)
 
+    # First, handle actions that do NOT require talking to the API (fast)
     if parsed.action == 'convertyaml':
-        json_arm_template = parsed.arm_template.replace('.yaml', '.json')
-        with open(json_arm_template, 'w+') as jtf:
+        jsonfile = parsed.arm_template.replace('.yaml', '.json')
+        with open(jsonfile, 'w+') as jtf:
             jtf.write(json.dumps(template, indent=2))
-        print(f"Converted JSON template: {json_arm_template}")
+        print("Converted template from YAML to JSON and saved to {jsontempl}")
         return 0
 
-    log.info(f"Attempting to obtain tenant ID from the {parsed.tenant} Azure tenant...")
-    # This can be done with a simple unauthenticated call to the Azure API
-    # We obtain it from the "token endpoint", also called the STS URL
-    oidcfg_url = f'https://login.windows.net/{parsed.tenant}/.well-known/openid-configuration'
-    oidcfg = json.loads(urllib.request.urlopen(oidcfg_url).read().decode())
-    tenant_id = oidcfg['token_endpoint'].split('/')[3]
-    log.info(f"Found a tenant ID of {tenant_id}")
-
-    azcreds = ServicePrincipalCredentials(
-        client_id=parsed.service_principal_id,
-        secret=parsed.service_principal_key,
-        tenant=tenant_id)
-    resource = ResourceManagementClient(azcreds, parsed.subscription_id)
+    # Now work with actions that do require talking to the API (blocking/slower)
+    resource = azureauth(
+        parsed.tenant, parsed.service_principal_id,
+        parsed.service_principal_key, parsed.subscription_id)
 
     if parsed.action == 'delete':
         resource.resource_groups.delete(parsed.group_name).wait()
+        print(f"Successfully deleted the {parsed.group_name} resource group")
 
     elif parsed.action == 'deploy':
-
-        result = resource.resource_groups.create_or_update(
-            parsed.group_name, {'location': parsed.group_location})
-        log.info(f"Azure resource group: {result}")
-
-        template_params = {
-            'storageAccountName': parsed.storage_account_name,
-            'builderVmAdminPassword': parsed.builder_vm_admin_password,
-            'builderVmSize': parsed.builder_vm_size}
-        template_params = {k: {'value': v} for k, v in template_params.items()}
-        deploy_params = {
-            'mode': 'incremental',
-            'template': template,
-            'parameters': template_params}
-        async_operation = resource.deployments.create_or_update(
-            parsed.group_name, parsed.deployment_name, deploy_params)
-        result = async_operation.result()
-
+        result = deploytempl(
+            resource, parsed.group_name, parsed.group_location,
+            parsed.storage_account_name, parsed.builder_vm_admin_password,
+            parsed.builder_vm_size, template, parsed.deployment_name)
         msg = "Deployment completed. Outputs:"
         for k, v in result.properties.outputs.items():
             msg += f"\n- {k} = {str(v['value'])}"
