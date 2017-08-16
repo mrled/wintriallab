@@ -4,7 +4,7 @@ Configure the WinTrialLab cloud builder VM
 #>
 [CmdletBinding()] Param(
     [string] $eventLogName = "WinTrialLab",
-    [string] $evengLogSource = $MyInvocation.MyCommand.Name
+    [string] $eventLogSource = "WinTrialLab-azure-deployInit.ps1"
 )
 
 <#
@@ -18,7 +18,7 @@ function Write-EventLogWrapper {
         [ValidateSet("Error",'Warning','Information','SuccessAudit','FailureAudit')] $entryType = "Information"
     )
     if (-not (get-eventlog -logname * |? { $_.Log -eq $eventLogName })) {
-        New-EventLog -Source $eventLogSource -LogName $eventLogNamew
+        New-EventLog -Source $eventLogSource -LogName $eventLogName
     }
     $messagePlus = "$message`r`n`r`nScript: $($script:ScriptPath)`r`nUser: ${env:USERDOMAIN}\${env:USERNAME}"
     if ($messagePlus.length -gt 32766) {
