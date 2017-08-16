@@ -7,6 +7,7 @@ import os
 import secrets
 import string
 import sys
+import urllib.request
 
 import yaml
 
@@ -64,7 +65,7 @@ def parseargs(*args, **kwargs):
         'action', choices=['deploy', 'delete', 'convertyaml'],
         help='Action to perform. Either deploy the ARM template to the resource group, delete the entire resource group, or convert the ARM template from YAML to JSON (for debugging purposes).')
     parser.add_argument(
-        '--debug', '-v', action='store_true',
+        '--debug', '-d', action='store_true',
         help="Show debug messages")
     parser.add_argument(
         '--deployment-name', default='wintriallab',
@@ -89,8 +90,8 @@ def parseargs(*args, **kwargs):
         '--service-principal-key', required=True,
         help="The secret key for the service principal to use")
     parser.add_argument(
-        '--tenant-id', required=True,
-        help="The Azure tenant ID (such as example.onmicrosoft.com)")
+        '--tenant', required=True,
+        help="The Azure Active Directory tenant (e.g. example.onmicrosoft.com)")
     parser.add_argument(
         '--subscription-id', required=True,
         help="The Azure subscription ID (GUID)")
@@ -110,23 +111,31 @@ def main(*args, **kwargs):
         parsed.save_json_template = True
         log.setLevel(logging.DEBUG)
 
-    azcreds = ServicePrincipalCredentials(
-        client_id=parsed.service_principal_id,
-        secret=parsed.service_principal_key,
-        tenant=parsed.tenant_id)
-
-    resource = ResourceManagementClient(azcreds, parsed.subscription_id)
-
     with open(parsed.arm_template) as tf:
         template = yaml.load(tf)
 
     if parsed.action == 'convertyaml':
         json_arm_template = parsed.arm_template.replace('.yaml', '.json')
         with open(json_arm_template, 'w+') as jtf:
-            jtf.write(json.dumps(template))
+            jtf.write(json.dumps(template, indent=2))
         print(f"Converted JSON template: {json_arm_template}")
+        return 0
 
-    elif parsed.action == 'delete':
+    log.info(f"Attempting to obtain tenant ID from the {parsed.tenant} Azure tenant...")
+    # This can be done with a simple unauthenticated call to the Azure API
+    # We obtain it from the "token endpoint", also called the STS URL
+    oidcfg_url = f'https://login.windows.net/{parsed.tenant}/.well-known/openid-configuration'
+    oidcfg = json.loads(urllib.request.urlopen(oidcfg_url).read().decode())
+    tenant_id = oidcfg['token_endpoint'].split('/')[3]
+    log.info(f"Found a tenant ID of {tenant_id}")
+
+    azcreds = ServicePrincipalCredentials(
+        client_id=parsed.service_principal_id,
+        secret=parsed.service_principal_key,
+        tenant=tenant_id)
+    resource = ResourceManagementClient(azcreds, parsed.subscription_id)
+
+    if parsed.action == 'delete':
         resource.resource_groups.delete(parsed.group_name).wait()
 
     elif parsed.action == 'deploy':
