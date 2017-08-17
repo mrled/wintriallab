@@ -53,7 +53,9 @@ variables:
   subnetPrefix: "[variables('vnetAddressPrefix')]"
   subnetId: "[concat(variables('vnetId'), '/subnets/', variables('subnetName'))]"
 
-  pubIpAddrType: Dynamic
+  # This has to be Static, because a Dynamic address might not be up at the end of the template
+  # https://serverfault.com/questions/869029/how-can-i-consistently-output-a-public-ip-address-in-an-azure-resource-manager-t
+  pubIpAddrType: Static
   pubIpAddrName: builderPubIp
   pubIpAddrId: "[resourceId('Microsoft.Network/publicIPAddresses', variables('pubIpAddrName'))]"
 
