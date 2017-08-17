@@ -98,31 +98,6 @@ def tname2tid(name):
     return tenant_id
 
 
-def azureauth(tenantname, spid, spkey, subscid):
-    """Authenticate to Azure, and return a ResourceManagementClient
-
-    tenantname: name of the Azure tenant, like example.onmicrosoft.com
-    spid:       service principal id, which is a GUID
-    spkey:      service principal secret key
-    subscid:    id of the Azure subscription
-    """
-    tenant_id = tname2tid(tenantname)
-    return ResourceManagementClient(
-        ServicePrincipalCredentials(
-            client_id=spid, secret=spkey, tenant=tenant_id),
-        subscid)
-
-
-def templparam(inparams):
-    """Construct an ARM template parameters object from a Python dictionary
-
-    For some reason, ARM template parameters require weird objects. Sorry.
-
-    inparams: a python dictionary like {'k1': 'v1', 'k2': 'v2'}
-    """
-    return {k: {'value': v} for k, v in inparams.items()}
-
-
 def deploytempl(
         resourceclient,
         groupname,
@@ -149,6 +124,11 @@ def deploytempl(
     result = resourceclient.resource_groups.create_or_update(
         groupname, {'location': grouplocation})
     log.info(f"Azure resource group: {result}")
+
+    # For some reason, ARM template parameters require weird objects. Sorry.
+    # The indict argument is a python dict like {'k1': 'v1', 'k2': 'v2'}
+    def templparam(indict):
+        return {k: {'value': v} for k, v in indict.items()}
 
     deploy_params = {
         'mode': deploymode,
@@ -231,9 +211,12 @@ def main(*args, **kwargs):
         return 0
 
     # Now work with actions that do require talking to the API (blocking/slower)
-    resource = azureauth(
-        parsed.tenant, parsed.service_principal_id,
-        parsed.service_principal_key, parsed.subscription_id)
+    resource = ResourceManagementClient(
+        ServicePrincipalCredentials(
+            client_id=parsed.service_principal_id,
+            secret=parsed.service_principal_key,
+            tenant=tname2tid(parsed.tenant)),
+        parsed.subscription_id)
 
     if parsed.action == 'delete':
         resource.resource_groups.delete(parsed.group_name).wait()
