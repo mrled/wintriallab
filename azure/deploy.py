@@ -7,6 +7,7 @@ import os
 import pdb
 import secrets
 import string
+import subprocess
 import sys
 import urllib.request
 
@@ -146,48 +147,72 @@ def deploytempl(
     return async_operation.result()
 
 
+def rdp_win(server, username, password):
+    try:
+        subprocess.check_output([
+            'cmdkey.exe', f'/generic:TERMSRV/{server}',
+            f'/user:{username}', f'/pass:"{password}"'])
+        subprocess.check_call(['mstsc.exe', f'/v:{server}'])
+    finally:
+        subprocess.check_output(['cmdkey.exe', f'/delete:TERMSRV/{server}'])
+
+
 def parseargs(*args, **kwargs):
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        'action', choices=['deploy', 'delete', 'convertyaml'],
-        help='Action to perform. Either deploy the ARM template to the resource group, delete the entire resource group, or convert the ARM template from YAML to JSON (for debugging purposes).')
+
     parser.add_argument(
         '--debug', '-d', action='store_true',
         help="Show debug messages")
-    parser.add_argument(
-        '--deployment-name', default='wintriallab',
-        help="Deployment name")
-    parser.add_argument(
-        '--group-name', default="wintriallab",
-        help="Azure Resource Group name")
-    parser.add_argument(
+
+    templateopts = argparse.ArgumentParser(add_help=False)
+    templateopts.add_argument(
         '--arm-template', type=resolvepath,
         default=os.path.join(scriptdir, 'cloudbuilder.yaml'),
         help="Location of the ARM template")
-    parser.add_argument(
+
+    azureopts = argparse.ArgumentParser(add_help=False)
+    azureopts.add_argument(
+        '--deployment-name', default='wintriallab',
+        help="Deployment name")
+    azureopts.add_argument(
+        '--group-name', default="wintriallab",
+        help="Azure Resource Group name")
+    azureopts.add_argument(
         '--group-location', default='westus2',
         help="The resource group location. Note that only a few resource groups support the types of VMs we require; see also https://azure.microsoft.com/en-us/blog/introducing-the-new-dv3-and-ev3-vm-sizes/")
-    parser.add_argument(
+    azureopts.add_argument(
         '--storage-account-name', required=True,
         help="A name for a new storage account. Note that this must follow Microsoft's rules for DNS hostnames, which are more restrictive than the DNS spec.")
-    parser.add_argument(
+    azureopts.add_argument(
         '--service-principal-id', required=True,
         help="The ID (GUID) of the service princiapl to use")
-    parser.add_argument(
+    azureopts.add_argument(
         '--service-principal-key', required=True,
         help="The secret key for the service principal to use")
-    parser.add_argument(
+    azureopts.add_argument(
         '--tenant', required=True,
         help="The Azure Active Directory tenant (e.g. example.onmicrosoft.com)")
-    parser.add_argument(
+    azureopts.add_argument(
         '--subscription-id', required=True,
         help="The Azure subscription ID (GUID)")
-    parser.add_argument(
+    azureopts.add_argument(
         '--builder-vm-admin-password', default=genpass(),
         help="The admin password for the builder VM")
-    parser.add_argument(
+    azureopts.add_argument(
         '--builder-vm-size', default='Standard_D2_v3',
         help="The size of the builder VM. Note that only Standard Dv3 and Standard Ev3 VMs support the nested virtualization that we need for the cloud boilder.")
+
+    subparsers = parser.add_subparsers(dest="action")
+    subparsers.add_parser(
+        'convertyaml', parents=[templateopts],
+        help='Convert the YAML template to JSON')
+    subparsers.add_parser(
+        'deploy', parents=[templateopts, azureopts],
+        help='Deploy the ARM template to Azure')
+    subparsers.add_parser(
+        'delete', parents=[templateopts, azureopts],
+        help='Delete an Azure Resource Group')
+
     parsed = parser.parse_args()
     return parsed
 
@@ -196,7 +221,6 @@ def main(*args, **kwargs):
     parsed = parseargs(args, kwargs)
     if parsed.debug:
         sys.excepthook = idb_excepthook
-        parsed.save_json_template = True
         log.setLevel(logging.DEBUG)
 
     with open(parsed.arm_template) as tf:
