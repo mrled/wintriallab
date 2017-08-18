@@ -9,6 +9,9 @@ parameters:
       description: Storage Account Name; must be a valid Azure DNS hostname
   builderVmAdminPassword:
     type: securestring
+  builderVmAdminUsername:
+    type: string
+    defaultValue: WinTrialAdmin
   builderVmSize:
     type: string
     defaultValue: Standard_D2_v3
@@ -29,7 +32,6 @@ variables:
   builderVmImageSku: 2016-Datacenter
   builderVmOsDiskName: "[concat(variables('builderVmName'), '-osdisk')]"
   builderVmOsDiskUri: "[concat(variables('storageAccountUri'), '/vhds/', variables('builderVmOsDiskName'), '.vhd')]"
-  builderVmAdminUsername: WinTrialAdmin
 
   winTrialLabDlPath:      "${env:SystemDrive}\\winTrialLab.zip"
   winTrialLabRepoBaseUri: "https://github.com/mrled/wintriallab"
@@ -122,7 +124,7 @@ resources:
       vmSize: "[parameters('builderVmSize')]"
     osProfile:
       computerName: "[variables('builderVmName')]"
-      adminUsername: "[variables('builderVmAdminUsername')]"
+      adminUsername: "[parameters('builderVmAdminUsername')]"
       adminPassword: "[parameters('builderVmAdminPassword')]"
     storageProfile:
       imageReference:
@@ -158,6 +160,6 @@ outputs:
   builderConnectionInformation:
     type: object
     value:
-      Username: "[variables('builderVmAdminUsername')]"
+      Username: "[parameters('builderVmAdminUsername')]"
       Password: "[parameters('builderVmAdminPassword')]"
       Public IP Address: "[reference(variables('pubIpAddrName')).ipAddress]"
