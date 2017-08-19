@@ -404,15 +404,15 @@ class ProcessedDeployConfig:
 def main(*args, **kwargs):
     config = ProcessedDeployConfig(args, kwargs)
 
+    if config.debug:
+        sys.excepthook = idb_excepthook
+        log.setLevel(logging.DEBUG)
+
     if config.showconfig:
         print("PROCESSED CONFIGURATION: ")
         for k, v in config.__dict__.items():
             print(f"{k} = {v}")
         return 0
-
-    if config.debug:
-        sys.excepthook = idb_excepthook
-        log.setLevel(logging.DEBUG)
 
     with open(config.arm_template) as tf:
         template = yaml.load(tf)
