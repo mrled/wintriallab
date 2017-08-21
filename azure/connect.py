@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 
-def getlogger(name='deploy-wintriallab-cloud-builder'):
+def getlogger(name='wintriallab-cloud-builder-connector'):
     log = logging.getLogger(name)
     log.setLevel(logging.WARNING)
     conhandler = logging.StreamHandler()
@@ -18,13 +18,18 @@ log = getlogger()
 
 
 def rdp_win(server, username, password):
-    """Connect to a server using Remote Desktop on Windows"""
+    """Connect to a server using Remote Desktop on Windows
+
+    There's no way to pass username/password to mstsc.exe, but we can save the
+    credentials to the system using cmdkey.exe. This function saves the creds,
+    attempts to connect, and removes the creds afterwards.
+    """
 
     def cmdkey(arguments):
         """Run cmdkey.exe
 
         For some reason I can't get this command to run successfully unless I
-        wrap it in Powershell's Start-Process cmdlet
+        wrap it in Powershell's Start-Process cmdlet. Even cmd /c was failing.
         """
         def quotify(s):  # Wrap a string in double quotes
             return f'"{s}"'
