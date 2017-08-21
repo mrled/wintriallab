@@ -9,7 +9,6 @@ import os
 import pdb
 import secrets
 import string
-import subprocess
 import sys
 import textwrap
 import urllib.request
@@ -168,16 +167,6 @@ def deploytempl(
     return async_operation.result()
 
 
-def rdp_win(server, username, password):
-    try:
-        subprocess.check_output([
-            'cmdkey.exe', f'/generic:TERMSRV/{server}',
-            f'/user:{username}', f'/pass:"{password}"'])
-        subprocess.check_call(['mstsc.exe', f'/v:{server}'])
-    finally:
-        subprocess.check_output(['cmdkey.exe', f'/delete:TERMSRV/{server}'])
-
-
 class ProcessedDeployConfig:
     """A class that can parse arguments and read from a config file
 
@@ -290,12 +279,6 @@ class ProcessedDeployConfig:
         deployopts.add_argument('--storage-account-name')
         deployopts.add_argument('--builder-vm-size')
 
-        # Options for the connect subcommand
-        connectopts = argparse.ArgumentParser(add_help=False)
-        connectopts.add_argument(
-            '--builder-vm-host',
-            help='The remote host to connect to')
-
         # Configure subcommands
         subparsers = parser.add_subparsers(dest="action")
         subparsers.add_parser(
@@ -311,9 +294,6 @@ class ProcessedDeployConfig:
         subparsers.add_parser(
             'testgroup', parents=[azurecredopts],
             help='Check if the resource group has been deployed')
-        subparsers.add_parser(
-            'connect', parents=[buildvmcredopts, connectopts],
-            help='Connect to the cloud builder VM over RDP')
 
         return parser.parse_args()
 
@@ -389,10 +369,6 @@ class ProcessedDeployConfig:
                 'service_principal_id', 'service_principal_key',
                 'tenant', 'subscription_id',
                 'resource_group_name']
-        elif self.action == 'connect':
-            required = [
-                'builder_vm_admin_username', 'builder_vm_admin_password',
-                'builder_vm_host']
         else:
             raise Exception(f"I don't know how to handle an action of '{self.action}'")
 
@@ -418,6 +394,8 @@ def main(*args, **kwargs):
         template = yaml.load(tf)
 
     # First, handle actions that do NOT require talking to the API (fast)
+    # Make sure you end each with 'return 0'!
+
     if config.action == 'convertyaml':
         jsonfile = config.arm_template.replace('.yaml', '.json')
         with open(jsonfile, 'w+') as jtf:
@@ -455,6 +433,8 @@ def main(*args, **kwargs):
         for k, v in result.properties.outputs.items():
             msg += f"\n- {k} = {str(v['value'])}"
         print(msg)
+    else:
+        raise Exception(f"I don't know how to process an action called '{config.action}'")
 
 
 if __name__ == '__main__':
