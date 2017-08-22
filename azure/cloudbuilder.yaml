@@ -162,4 +162,4 @@ outputs:
     value:
       Username: "[parameters('builderVmAdminUsername')]"
       Password: "[parameters('builderVmAdminPassword')]"
-      Public IP Address: "[reference(variables('pubIpAddrName')).ipAddress]"
+      IPAddress: "[reference(variables('pubIpAddrName')).ipAddress]"
