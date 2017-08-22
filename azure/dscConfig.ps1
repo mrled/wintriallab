@@ -1,4 +1,4 @@
-Configuration WinTrialBuilder {
+Configuration WinTrialBuilderConfig {
     param(
         [string[]] $computerName = "localhost"
     )
@@ -19,5 +19,3 @@ Configuration WinTrialBuilder {
         }
     }
 }
-
-WinTrialBuilder

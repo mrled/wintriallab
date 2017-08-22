@@ -1,10 +1,20 @@
 <#
 .synopsis
 Configure the WinTrialLab cloud builder VM
+.parameter winTrialLab
+The location of an already existing and checked out copy of the WinTrialLab repo
+.parameter eventLogName
+The name of the event log to use. Creates if nonexistent.
+.parameter eventLogSource
+The name to use for the "source" of the event log entries we create. Arbitrary string.
+.parameter magicUrl
+The URL for the "magic" script. This script is run and immediately executed. Useful for arbitrary customization.
 #>
 [CmdletBinding()] Param(
+    [Parameter(Mandatory)] [string] $winTrialLabDir
     [string] $eventLogName = "WinTrialLab",
-    [string] $eventLogSource = "WinTrialLab-azure-deployInit.ps1"
+    [string] $eventLogSource = "WinTrialLab-azure-deployInit.ps1",
+    [string] $magicUrl = "https://raw.githubusercontent.com/mrled/dhd/master/opt/powershell/magic.ps1"
 )
 
 <#
@@ -34,7 +44,7 @@ function Write-EventLogWrapper {
 
 <#
 .description
-Test whether the current Window account has administrator privileges
+Test whether the current Windows account has administrator privileges
 #>
 function Test-AdministratorRole {
     $me = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -108,28 +118,25 @@ function Install-ChocolateyPackage {
     Invoke-PathExecutable "choco.exe install $packageName"
 }
 
-<#
-.description
-Get my dhd repository and configure Powershell to use my $profile etc. See the script for details.
-When the cloudbuilder is better tested, I won't need to connect over RDP at all. I'd like to remove this eventually.
-#>
-function Invoke-Magic {
-    [CmdletBinding()] Param(
-        $magicUrl = "https://raw.githubusercontent.com/mrled/dhd/master/opt/powershell/magic.ps1"
-    )
-    Invoke-WebRequest -UseBasicParsing $magicUrl | Invoke-Expression
-}
-
 Write-EventLogWrapper -message "Initializing the WinTrialLab cloud builder deployment..."
 Set-ExecPolUnrestricted
+
 Install-Chocolatey
-Install-ChocolateyPackage -packageName @('packer')
-Invoke-Magic
+Install-ChocolateyPackage -packageName @('packer', 'git')
+
+# Get my dhd repository and configure Powershell to use my $profile etc. See the script for details.
+# When the cloudbuilder is better tested, I won't need to connect over RDP at all.
+# Since this is just my custom Powershell profile etc, I'd like to remove this eventually.
+Invoke-WebRequest -UseBasicParsing $magicUrl | Invoke-Expression
 
 # Hyper-V and DSC stuff... refactor later
 Install-PackageProvider -Name NuGet -Force
 Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
 Install-Module -Name xHyper-V
 
-# TODO: hard-coded URL to a non-master branch!
-Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/mrled/wintriallab/azure-builder/azure/dscConfig.ps1"
+# Initialize DSC configuration
+. $winTrialLabDir\azure\dscConfig.ps1
+# Compile the MOF
+$dscWorkDir = "$winTrialLabDir\DscWorkDir"
+WinTrialBuilderConfig -OutputPath $dscWorkDir
+Start-DscConfiguration -Path $dscWorkDir

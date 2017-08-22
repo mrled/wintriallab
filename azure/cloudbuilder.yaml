@@ -43,7 +43,7 @@ variables:
   deployExtName: wtlDeployExtension
   deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ', variables('winTrialLabZipUri'), ' -OutFile ', variables('winTrialLabDlPath'), ';')]"
   deployExtUnpackCmd:   "[concat('Expand-Archive -Force -DestinationPath ', variables('winTrialLabParentDir'), ' -Path ', variables('winTrialLabDlPath'), ';')]"
-  deployExtInitCmd:     "[concat('& ', variables('winTrialLabDir'), '\\azure\\deployInit.ps1', ';')]"
+  deployExtInitCmd:     "[concat('& ', variables('winTrialLabDir'), '\\azure\\deployInit.ps1', '-winTrialLabDir', variables('winTrialLabDir'), ';')]"
   deployExtCommand:     "[concat(variables('deployExtDownloadCmd'), variables('deployExtUnpackCmd'), variables('deployExtInitCmd'))]"
   deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtCommand'), '} \"')]"
 
