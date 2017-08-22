@@ -39,7 +39,7 @@ Test whether the current Window account has administrator privileges
 function Test-AdministratorRole {
     $me = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
     $amAdmin = $me.IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
-    Write-EventLogWrapper -message "Current user has admin privileges: '$(amAdmin)'"
+    Write-EventLogWrapper -message "Current user has admin privileges: '$($amAdmin)'"
     return $amAdmin
 }
 
@@ -59,7 +59,7 @@ function Update-EnvironmentPath {
 
 <#
 .description
-Wrap calls to external executables so that we can update the %PATH% first
+Wrap calls to external executables so that we can update the %PATH% first and check the exit code afterwards.
 #>
 function Invoke-PathExecutable {
     [CmdletBinding()] Param(
@@ -108,7 +108,28 @@ function Install-ChocolateyPackage {
     Invoke-PathExecutable "choco.exe install $packageName"
 }
 
+<#
+.description
+Get my dhd repository and configure Powershell to use my $profile etc. See the script for details.
+When the cloudbuilder is better tested, I won't need to connect over RDP at all. I'd like to remove this eventually.
+#>
+function Invoke-Magic {
+    [CmdletBinding()] Param(
+        $magicUrl = "https://raw.githubusercontent.com/mrled/dhd/master/opt/powershell/magic.ps1"
+    )
+    Invoke-WebRequest -UseBasicParsing $magicUrl | Invoke-Expression
+}
+
 Write-EventLogWrapper -message "Initializing the WinTrialLab cloud builder deployment..."
 Set-ExecPolUnrestricted
 Install-Chocolatey
 Install-ChocolateyPackage -packageName @('packer')
+Invoke-Magic
+
+# Hyper-V and DSC stuff... refactor later
+Install-PackageProvider -Name NuGet -Force
+Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+Install-Module -Name xHyper-V
+
+# TODO: hard-coded URL to a non-master branch!
+Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/mrled/wintriallab/azure-builder/azure/dscConfig.ps1"
