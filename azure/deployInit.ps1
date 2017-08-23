@@ -106,7 +106,7 @@ function Set-ExecPolUnrestricted {
 function Install-Chocolatey {
     Invoke-WebRequest https://chocolatey.org/install.ps1 -UseBasicParsing | Invoke-Expression
     Update-EnvironmentPath
-    $chocoPath = Get-Command choco.exe | Select-Oject -ExpandProperty Source
+    $chocoPath = Get-Command choco.exe | Select-Object -ExpandProperty Source
     Invoke-PathExecutable "choco.exe feature enable --name=allowGlobalConfirmation --yes"
     Write-EventLogWrapper -message "Chocolatey is now installed to '$chocoPath'"
 }
@@ -136,7 +136,14 @@ Install-Module -Name xHyper-V
 
 # Initialize DSC configuration
 . $winTrialLabDir\azure\dscConfig.ps1
-# Compile the MOF
-$dscWorkDir = "$winTrialLabDir\DscWorkDir"
-WinTrialBuilderConfig -OutputPath $dscWorkDir
-Start-DscConfiguration -Path $dscWorkDir
+$dscWorkDirBase = mkdir -Force "$winTrialLabDir\DscWorkDir" | Select-Object -ExpandProperty FullName
+
+# Configure the Local Configuration Manager first
+$lcmWorkDir = Join-Path $dscWorkDirBase "LocalConfigurationManager"
+DSConfigure-LocalConfigurationManager -OutputPath $lcmWorkDir
+Set-DscLocalConfigurationManager -Path $lcmWorkDir
+
+# Now run the WinTrialLab DSC configuration
+$wtlWorkDir = Join-Path $dscWorkDirBase "WinTrialLab"
+DSConfigure-WinTrialBuilder -OutputPath $wtlWorkDir
+Start-DscConfiguration -Path $wtlWorkDir
