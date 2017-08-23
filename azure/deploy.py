@@ -102,71 +102,129 @@ def homedir():
     raise Exception("Could not determine home directory - try setting a $HOME or %USERPROFILE% variable")
 
 
-def tname2tid(name):
-    """Convert a tenant name to a tenant ID
+class WinTrialLabAzureWrapper:
+    """Wrap generic Azure API methods for WinTrialLab"""
 
-    Use the unauthenticated Azure public API - no credentials required
+    _armclient = None
 
-    name: The name of the tenant, like example.onmicrosoft.com
-    """
-    log.info(f"Attempting to obtain tenant ID from the {name} Azure tenant...")
-    # This can be done with a simple unauthenticated call to the Azure API
-    # We obtain it from the "token endpoint", also called the STS URL
-    oidcfg_url = f'https://login.windows.net/{name}/.well-known/openid-configuration'
-    oidcfg = json.loads(urllib.request.urlopen(oidcfg_url).read().decode())
-    tenant_id = oidcfg['token_endpoint'].split('/')[3]
-    log.info(f"Found a tenant ID of {tenant_id}")
-    return tenant_id
+    def __init__(
+            self,
+            service_principal_id,
+            service_principal_key,
+            tenant_name,
+            subscription_id):
+        self.service_principal_id = service_principal_id
+        self.service_principal_key = service_principal_key
+        self.tenant_name = tenant_name
+        self.subscription_id = subscription_id
 
+    @classmethod
+    def tname2tid(cls, name):
+        """Convert a tenant name to a tenant ID
 
-def deploytempl(
-        resourceclient,
-        groupname,
-        grouplocation,
-        storageacct,
-        vmadminuser,
-        vmadminpass,
-        vmsize,
-        template,
-        deploymentname,
-        deploymode='incremental'):
-    """Deploy the YAML cloud builder template
+        Use the unauthenticated Azure public API - no credentials required
 
-    resourceclient: an authenticated ResourceManagementClient instance
-    groupname:      the name of the resource group
-    grouplocation:  the location for the resource group
-    storageacct:    the name of the storage account
-    vmadminpass:    a password to use for the cloud builder VM
-    vmsize:         the size of the cloud builder VM
-    template:       the path to the ARM template
-    deploymentname: a name for this deployment
-    deploymode:     the Azure RM deployment mode
-    """
+        name: The name of the tenant, like example.onmicrosoft.com
+        """
+        log.info(f"Attempting to obtain tenant ID from the {name} Azure tenant...")
+        # This can be done with a simple unauthenticated call to the Azure API
+        # We obtain it from the "token endpoint", also called the STS URL
+        oidcfg_url = f'https://login.windows.net/{name}/.well-known/openid-configuration'
+        oidcfg = json.loads(urllib.request.urlopen(oidcfg_url).read().decode())
+        tenant_id = oidcfg['token_endpoint'].split('/')[3]
+        log.info(f"Found a tenant ID of {tenant_id}")
+        return tenant_id
 
-    result = resourceclient.resource_groups.create_or_update(
-        groupname, {'location': grouplocation})
-    log.info(f"Azure resource group: {result}")
+    @property
+    def armclient(self):
+        """A lazily-loaded authenticated ResourceManagementClient
 
-    # For some reason, ARM template parameters require weird objects. Sorry.
-    # The indict argument is a python dict like {'k1': 'v1', 'k2': 'v2'}
-    def templparam(indict):
+        Lets us create the WinTrialLabAzureWrapper object without blocking until
+        the API calls to authenticate complete; this way, those API callss
+        aren't started until we want to actually use them.
+        """
+        if not self._armclient:
+            self._armclient = ResourceManagementClient(
+                ServicePrincipalCredentials(
+                    client_id=self.service_principal_id,
+                    secret=self.service_principal_key,
+                    tenant=WinTrialLabAzureWrapper.tname2tid(self.tenant_name)),
+                self.subscription_id)
+        return self._armclient
+
+    def testdeployed(self, name):
+        """Test whether a resource group exists"""
+        try:
+            self.armclient.resource_groups.get(name)
+            return True
+        except CloudError as exp:
+            if exp.status_code == 404:
+                return False
+            else:
+                raise exp
+
+    def deletegroup(self, name):
+        """Delete a resource group if it exists"""
+        if self.testdeployed(name):
+            self.armclient.resource_groups.delete(name).wait()
+            log.info(f"Successfully deleted the {name} resource group")
+        else:
+            log.info(f"The {name} resource group did not exist")
+
+    def templparam(self, indict):
+        """Create a template parameter object from a Python dict
+
+        For some reason, ARM template parameters require weird objects. Sorry.
+
+        indict:  a python dict like {'k1': 'v1', 'k2': 'v2'}
+        """
         return {k: {'value': v} for k, v in indict.items()}
 
-    deploy_params = {
-        'mode': deploymode,
-        'template': template,
-        'parameters': templparam({
-            'storageAccountName': storageacct,
-            'builderVmAdminUsername': vmadminuser,
-            'builderVmAdminPassword': vmadminpass,
-            'builderVmSize': vmsize})
-    }
+    def deploytempl(
+            self,
+            groupname,
+            grouplocation,
+            template,
+            parameters,
+            deploymentname,
+            deploymode='incremental',
+            deletefirst=False):
+        """Deploy a cloud builder template
 
-    async_operation = resourceclient.deployments.create_or_update(
-        groupname, deploymentname, deploy_params)
+        groupname:      the name of the resource group
+        grouplocation:  th location for the resource group
+        template:       a dict containing the ARM template
+                        (perhaps created via json.load())
+        parameters:     a dict containing template parameters
+        deploymentname: the name for this deployment
+        deploymode:     the Azure RM deployment mode
+        deletefirst:    if True, delete the resource group before deploying
+        """
 
-    # .result() blocks until the operation is complete
-    return async_operation.result()
+        if deletefirst:
+            self.deletegroup(groupname)
+
+        result = self.armclient.resource_groups.create_or_update(
+            groupname, {'location': grouplocation})
+        log.info(f"Azure resource group: {result}")
+
+        # For some reason, ARM template parameters require weird objects. Sorry.
+        # The indict argument is a python dict like {'k1': 'v1', 'k2': 'v2'}
+        def templparam(indict):
+            return {k: {'value': v} for k, v in indict.items()}
+
+        deploy_params = {
+            'mode': deploymode,
+            'template': template,
+            'parameters': self.templparam(parameters)}
+
+        async_operation = self.armclient.deployments.create_or_update(
+            groupname, deploymentname, deploy_params)
+
+        # .result() blocks until the operation is complete
+        result = async_operation.result()
+
+        return result.properties.outputs
 
 
 class ProcessedDeployConfig:
@@ -280,6 +338,9 @@ class ProcessedDeployConfig:
         deployopts.add_argument('--resource-group-location')
         deployopts.add_argument('--storage-account-name')
         deployopts.add_argument('--builder-vm-size')
+        deployopts.add_argument(
+            '--delete', action='store_true',
+            help="If the resource group already exists, delete it before starting the deployment.")
 
         # Configure subcommands
         subparsers = parser.add_subparsers(dest="action")
@@ -353,23 +414,31 @@ class ProcessedDeployConfig:
             required = ['arm_template']
         elif self.action == 'testgroup':
             required = [
-                'service_principal_id', 'service_principal_key',
-                'tenant', 'subscription_id',
+                'service_principal_id',
+                'service_principal_key',
+                'tenant',
+                'subscription_id',
                 'resource_group_name']
         elif self.action == 'deploy':
             required = [
                 'arm_template',
-                'service_principal_id', 'service_principal_key',
-                'tenant', 'subscription_id',
+                'service_principal_id',
+                'service_principal_key',
+                'tenant',
+                'subscription_id',
                 'resource_group_name',
                 'resource_group_location',
                 'storage_account_name',
-                'builder_vm_admin_username', 'builder_vm_admin_password',
-                'builder_vm_size', 'deployment_name']
+                'builder_vm_admin_username',
+                'builder_vm_admin_password',
+                'builder_vm_size',
+                'deployment_name']
         elif self.action == 'delete':
             required = [
-                'service_principal_id', 'service_principal_key',
-                'tenant', 'subscription_id',
+                'service_principal_id',
+                'service_principal_key',
+                'tenant',
+                'subscription_id',
                 'resource_group_name']
         else:
             raise Exception(f"I don't know how to handle an action of '{self.action}'")
@@ -392,46 +461,45 @@ def main(*args, **kwargs):
             print(f"{k} = {v}")
         return 0
 
+    wtlazwrapper = WinTrialLabAzureWrapper(
+        config.service_principal_id,
+        config.service_principal_key,
+        config.tenant,
+        config.subscription_id)
+
     with open(config.arm_template) as tf:
         template = yaml.load(tf)
-
-    # First, handle actions that do NOT require talking to the API (fast)
-    # Make sure you end each with 'return 0'!
 
     if config.action == 'convertyaml':
         jsonfile = config.arm_template.replace('.yaml', '.json')
         with open(jsonfile, 'w+') as jtf:
             jtf.write(json.dumps(template, indent=2))
         print("Converted template from YAML to JSON and saved to {jsontempl}")
-        return 0
 
-    # Now work with actions that do require talking to the API (blocking/slower)
-    resource = ResourceManagementClient(
-        ServicePrincipalCredentials(
-            client_id=config.service_principal_id,
-            secret=config.service_principal_key,
-            tenant=tname2tid(config.tenant)),
-        config.subscription_id)
-
-    if config.action == 'testgroup':
-        try:
-            resource.resource_groups.get(config.resource_group_name)
+    elif config.action == 'testgroup':
+        if wtlazwrapper.testdeployed(config.resource_group_name):
             print(f"YES, the resource group '{config.resource_group_name}'' is deployed and costing you $$$")
-        except CloudError as exp:
-            if exp.status_code == 404:
-                print(f"NO, the resource group '{config.resource_group_name}'' is not present")
-            else:
-                raise exp
+        else:
+            print(f"NO, the resource group '{config.resource_group_name}'' is not present")
+
     elif config.action == 'delete':
-        resource.resource_groups.delete(config.resource_group_name).wait()
-        print(f"Successfully deleted the {parsed.resource_group_name} resource group")
+        wtlazwrapper.deletegroup(config.resource_group_name)
+        print(f"Deleted resource group '{config.resource_group_name}'")
+
     elif config.action == 'deploy':
-        result = deploytempl(
-            resource, config.resource_group_name, config.resource_group_location,
-            config.storage_account_name,
-            config.builder_vm_admin_username, config.builder_vm_admin_password,
-            config.builder_vm_size, template, config.deployment_name)
-        conninfo = result.properties.outputs['builderConnectionInformation']['value']
+        outputs = wtlazwrapper.deploytempl(
+            config.resource_group_name,
+            config.resource_group_location,
+            template,
+            {
+                'storageAccountName':       config.storage_account_name,
+                'builderVmAdminUsername':   config.builder_vm_admin_username,
+                'builderVmAdminPassword':   config.builder_vm_admin_password,
+                'builderVmSize':            config.builder_vm_size},
+            config.deployment_name,
+            deletefirst=config.delete)
+
+        conninfo = outputs['builderConnectionInformation']['value']
         print('Deployment completed. To connect, run connect.py on your Docker *host* machine (not within the container) like so:')
         print(f'connect.py {conninfo["IPAddress"]} {conninfo["Username"]} "{conninfo["Password"]}"')
     else:
