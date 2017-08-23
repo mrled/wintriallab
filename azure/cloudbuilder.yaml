@@ -41,10 +41,11 @@ variables:
   winTrialLabDir:         "[concat(variables('winTrialLabParentDir'), '\\wintriallab-', variables('winTrialLabRepoBranch'))]"
 
   deployExtName: wtlDeployExtension
+  deployExtErrCmd:      "$ErrorActionPreference = 'Stop' ;"
   deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ', variables('winTrialLabZipUri'), ' -OutFile ', variables('winTrialLabDlPath'), ';')]"
-  deployExtUnpackCmd:   "[concat('Expand-Archive -Force -DestinationPath ', variables('winTrialLabParentDir'), ' -Path ', variables('winTrialLabDlPath'), ';')]"
+  deployExtUnpackCmd:   "[concat('Expand-Archive -Force -DestinationPath ', variables('winTrialLabParentDir'), '\\ -Path ', variables('winTrialLabDlPath'), ';')]"
   deployExtInitCmd:     "[concat('& ', variables('winTrialLabDir'), '\\azure\\deployInit.ps1', ' -winTrialLabDir ', variables('winTrialLabDir'), ';')]"
-  deployExtCommand:     "[concat(variables('deployExtDownloadCmd'), variables('deployExtUnpackCmd'), variables('deployExtInitCmd'))]"
+  deployExtCommand:     "[concat(variables('deployExtErrCmd'), variables('deployExtDownloadCmd'), variables('deployExtUnpackCmd'), variables('deployExtInitCmd'))]"
   deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtCommand'), '} \"')]"
 
   vnetName: wintrialnet
