@@ -1,7 +1,7 @@
 <#
 .synopsis
 Configure the WinTrialLab cloud builder VM
-.parameter winTrialLab
+.parameter winTrialLabDir
 The location of an already existing and checked out copy of the WinTrialLab repo
 .parameter eventLogName
 The name of the event log to use. Creates if nonexistent.
@@ -11,7 +11,7 @@ The name to use for the "source" of the event log entries we create. Arbitrary s
 The URL for the "magic" script. This script is run and immediately executed. Useful for arbitrary customization.
 #>
 [CmdletBinding()] Param(
-    [Parameter(Mandatory)] [string] $winTrialLabDir
+    [Parameter(Mandatory)] [string] $winTrialLabDir,
     [string] $eventLogName = "WinTrialLab",
     [string] $eventLogSource = "WinTrialLab-azure-deployInit.ps1",
     [string] $magicUrl = "https://raw.githubusercontent.com/mrled/dhd/master/opt/powershell/magic.ps1"

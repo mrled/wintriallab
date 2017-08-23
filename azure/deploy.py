@@ -74,8 +74,9 @@ def genpass(length=24):
     wrong with my algorithm is worked around by the length.
     """
 
-    # Keep quotes out to make sure the password is easy to pass on the command line inside quotes
-    symbols = r'!@#$%^&*(),.<>/?;:[]{}\|`~'
+    # Keep quotes and escape characters out of this list so the password will
+    # be easy to pass on the commandline inside quotes
+    symbols = r'!@#$%^&*(),.<>/?;:[]{}|~'
     alphabet = string.ascii_letters + string.digits + symbols
 
     def testwinpass(password):
@@ -430,9 +431,9 @@ def main(*args, **kwargs):
             config.storage_account_name,
             config.builder_vm_admin_username, config.builder_vm_admin_password,
             config.builder_vm_size, template, config.deployment_name)
-        conninfo = result.properties.outputs['builderConnectionInformation']
+        conninfo = result.properties.outputs['builderConnectionInformation']['value']
         print('Deployment completed. To connect, run connect.py on your Docker *host* machine (not within the container) like so:')
-        print(f'connect.py {conninfo.IPAddress} {conninfo.Username} "{conninfo.Password}"')
+        print(f'connect.py {conninfo["IPAddress"]} {conninfo["Username"]} "{conninfo["Password"]}"')
     else:
         raise Exception(f"I don't know how to process an action called '{config.action}'")
 
