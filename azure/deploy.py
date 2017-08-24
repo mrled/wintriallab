@@ -56,17 +56,6 @@ def idb_excepthook(type, value, tb):
         pdb.pm()
 
 
-def resolvepath(path):
-    return os.path.realpath(os.path.normpath(os.path.expanduser(path)))
-
-
-def exresolvepath(path):
-    rpath = resolvepath(path)
-    if not os.path.exists(rpath):
-        raise Exception(f"Path does not exist: '{rpath}'")
-    return rpath
-
-
 def genpass(length=24):
     """Generate a passphrase that will meet default Windows complexity reqs
 
@@ -102,6 +91,36 @@ def homedir():
     raise Exception("Could not determine home directory - try setting a $HOME or %USERPROFILE% variable")
 
 
+class QualifiedPath:
+    """Fully qualify a path"""
+
+    def __init__(self, path):
+        self.path = self.resolve(path)
+
+    def __repr__(self):
+        return self.path
+
+    @classmethod
+    def resolve(cls, path):
+        os.path.realpath(os.path.normpath(os.path.expanduser(path)))
+
+    @classmethod
+    def Resolved(self, mustexist=False):
+        """Return a function that resolves a path, optionally requiring it to exist
+
+        Intended for use as a type= argument for arguments from argparse. For
+        example:
+            parser.add_argument(
+                '-p', type=QualifiedPath.Resolved(mustexist=True))
+        """
+        def r(path):
+            p = QualifiedPath(path)
+            if mustexist and not os.path.exists(p):
+                raise Exception(f'Path at "{p}" does not exist')
+            return p
+        return r
+
+
 class WinTrialLabAzureWrapper:
     """Wrap generic Azure API methods for WinTrialLab"""
 
@@ -135,12 +154,22 @@ class WinTrialLabAzureWrapper:
         log.info(f"Found a tenant ID of {tenant_id}")
         return tenant_id
 
+    @classmethod
+    def templparam(cls, indict):
+        """Create a template parameter object from a Python dict
+
+        For some reason, ARM template parameters require weird objects. Sorry.
+
+        indict:  a python dict like {'k1': 'v1', 'k2': 'v2'}
+        """
+        return {k: {'value': v} for k, v in indict.items()}
+
     @property
     def armclient(self):
         """A lazily-loaded authenticated ResourceManagementClient
 
         Lets us create the WinTrialLabAzureWrapper object without blocking until
-        the API calls to authenticate complete; this way, those API callss
+        the API calls to authenticate complete; this way, those API calls
         aren't started until we want to actually use them.
         """
         if not self._armclient:
@@ -148,7 +177,7 @@ class WinTrialLabAzureWrapper:
                 ServicePrincipalCredentials(
                     client_id=self.service_principal_id,
                     secret=self.service_principal_key,
-                    tenant=WinTrialLabAzureWrapper.tname2tid(self.tenant_name)),
+                    tenant=self.tname2tid(self.tenant_name)),
                 self.subscription_id)
         return self._armclient
 
@@ -170,15 +199,6 @@ class WinTrialLabAzureWrapper:
             log.info(f"Successfully deleted the {name} resource group")
         else:
             log.info(f"The {name} resource group did not exist")
-
-    def templparam(self, indict):
-        """Create a template parameter object from a Python dict
-
-        For some reason, ARM template parameters require weird objects. Sorry.
-
-        indict:  a python dict like {'k1': 'v1', 'k2': 'v2'}
-        """
-        return {k: {'value': v} for k, v in indict.items()}
 
     def deploytempl(
             self,
@@ -208,11 +228,6 @@ class WinTrialLabAzureWrapper:
             groupname, {'location': grouplocation})
         log.info(f"Azure resource group: {result}")
 
-        # For some reason, ARM template parameters require weird objects. Sorry.
-        # The indict argument is a python dict like {'k1': 'v1', 'k2': 'v2'}
-        def templparam(indict):
-            return {k: {'value': v} for k, v in indict.items()}
-
         deploy_params = {
             'mode': deploymode,
             'template': template,
@@ -223,7 +238,6 @@ class WinTrialLabAzureWrapper:
 
         # .result() blocks until the operation is complete
         result = async_operation.result()
-
         return result.properties.outputs
 
 
@@ -306,7 +320,8 @@ class ProcessedDeployConfig:
         # Options for the script itself
         parser.add_argument('--debug', '-d', action='store_const', const=True)
         parser.add_argument(
-            '--configfile', '-c', type=exresolvepath,
+            '--configfile', '-c',
+            type=QualifiedPath.Resolved(mustexist=True),
             help="The path to a config file")
         parser.add_argument(
             '--showconfig', action='store_true',
@@ -314,7 +329,8 @@ class ProcessedDeployConfig:
 
         # Options for all subcommands dealing with the YAML template
         templateopts = argparse.ArgumentParser(add_help=False)
-        templateopts.add_argument('--arm-template', type=exresolvepath)
+        templateopts.add_argument(
+            '--arm-template', type=QualifiedPath.Resolved(mustexist=True))
 
         # Options for all subcommands dealing with builder VM credentials
         buildvmcredopts = argparse.ArgumentParser(add_help=False)
@@ -371,10 +387,12 @@ class ProcessedDeployConfig:
         # Munge dictionary values to be the right types
         def setboolval(dictionary, key):
             if key in dictionary.keys():
-                boolval = False
-                if dictionary[key] in ['true', 'True', 'yes', 'Yes', 1]:
-                    boolval = True
-                dictionary[key] = boolval
+                if dictionary[key].lower() in ['true', 'yes', 1]:
+                    return True
+                elif dictionary[key].lower() in ['false', 'no', 0]:
+                    return False
+                else:
+                    raise Exception("Could not parse boolean value '{dictionary[key]}' for key '{key}'")
 
         setboolval(configdict, 'debug')
 
@@ -501,7 +519,7 @@ def main(*args, **kwargs):
 
         conninfo = outputs['builderConnectionInformation']['value']
         print('Deployment completed. To connect, run connect.py on your Docker *host* machine (not within the container) like so:')
-        print(f'connect.py {conninfo["IPAddress"]} {conninfo["Username"]} "{conninfo["Password"]}"')
+        print(f"connect.py {conninfo['IPAddress']} {conninfo['Username']} '{conninfo['Password']}'")
     else:
         raise Exception(f"I don't know how to process an action called '{config.action}'")
 
