@@ -23,7 +23,7 @@ Wrapper that writes to the event log but also to the screen
 #>
 function Write-EventLogWrapper {
     [cmdletbinding()] param(
-        [parameter(mandatory=$true)] [String] $message,
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)] [String] $message,
         [int] $eventId = 0,
         [ValidateSet("Error",'Warning','Information','SuccessAudit','FailureAudit')] $entryType = "Information"
     )
@@ -140,10 +140,10 @@ $dscWorkDirBase = mkdir -Force "$winTrialLabDir\DscWorkDir" | Select-Object -Exp
 
 # Configure the Local Configuration Manager first
 $lcmWorkDir = Join-Path $dscWorkDirBase "LocalConfigurationManager"
-DSConfigure-LocalConfigurationManager -OutputPath $lcmWorkDir
-Set-DscLocalConfigurationManager -Path $lcmWorkDir
+DSConfigure-LocalConfigurationManager -OutputPath $lcmWorkDir | Write-EventLogWrapper
+Set-DscLocalConfigurationManager -Path $lcmWorkDir | Write-EventLogWrapper
 
 # Now run the WinTrialLab DSC configuration
 $wtlWorkDir = Join-Path $dscWorkDirBase "WinTrialLab"
-DSConfigure-WinTrialBuilder -OutputPath $wtlWorkDir
-Start-DscConfiguration -Path $wtlWorkDir
+DSConfigure-WinTrialBuilder -OutputPath $wtlWorkDir | Write-EventLogWrapper
+Start-DscConfiguration -Path $wtlWorkDir | Write-EventLogWrapper
