@@ -33,20 +33,16 @@ variables:
   builderVmOsDiskName: "[concat(variables('builderVmName'), '-osdisk')]"
   builderVmOsDiskUri: "[concat(variables('storageAccountUri'), '/vhds/', variables('builderVmOsDiskName'), '.vhd')]"
 
-  winTrialLabDlPath:      "${env:SystemDrive}\\winTrialLab.zip"
-  winTrialLabRepoBaseUri: "https://github.com/mrled/wintriallab"
-  winTrialLabRepoBranch:  "azure-builder"
-  winTrialLabZipUri:      "[concat(variables('winTrialLabRepoBaseUri'), '/archive/', variables('winTrialLabRepoBranch'), '.zip')]"
-  winTrialLabParentDir:   "${env:SystemDrive}"
-  winTrialLabDir:         "[concat(variables('winTrialLabParentDir'), '\\wintriallab-', variables('winTrialLabRepoBranch'))]"
+  wtlRepoSubpath: "mrled/wintriallab"
+  wtlRepoCheckoutUri: "[concat('https://github.com/', variables('wtlRepoSubpath'))]"
+  wtlRepoBranch:      "azure-builder"
+  wtlDeployInitUri:   "[concat('https://raw.githubusercontent.com/', variables('wtlRepoSubpath'), '/', variables('wtlRepoBranch'), '/azure/deployInit.ps1')]"
+  wtlDeployInitPath: "$env:SystemDrive\\deployInit.ps1"
 
-  deployExtName: wtlDeployExtension
-  deployExtErrCmd:      "$ErrorActionPreference = 'Stop' ;"
-  deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ', variables('winTrialLabZipUri'), ' -OutFile ', variables('winTrialLabDlPath'), ';')]"
-  deployExtUnpackCmd:   "[concat('Expand-Archive -Force -DestinationPath ', variables('winTrialLabParentDir'), '\\ -Path ', variables('winTrialLabDlPath'), ';')]"
-  deployExtInitCmd:     "[concat('& ', variables('winTrialLabDir'), '\\azure\\deployInit.ps1', ' -winTrialLabDir ', variables('winTrialLabDir'), ';')]"
-  deployExtCommand:     "[concat(variables('deployExtErrCmd'), variables('deployExtDownloadCmd'), variables('deployExtUnpackCmd'), variables('deployExtInitCmd'))]"
-  deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtCommand'), '} \"')]"
+  deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'))]"
+  deployExeRunCmd: "[concat('& ', variables('wtlDeployInitPath'), ' -wtlRepoUri ', variables('wtlRepoCheckoutUri'), ' -wtlRepoBranch ', variables('wtlRepoBranch'))]"
+  deployExtFullCmd: "[concat(variables('deployExtDownloadCmd'), ';', variables('deployExeRunCmd'), ';')]"
+  deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtFullCommand'), '} \"')]"
 
   vnetName: wintrialnet
   vnetId: "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
