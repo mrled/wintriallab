@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import copy
 import configparser
 import datetime
 import json
@@ -11,10 +12,13 @@ import secrets
 import string
 import sys
 import textwrap
+import time
 import urllib.request
 
+import requests
 import yaml
 
+import adal
 from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.resource import ResourceManagementClient
 from msrestazure.azure_exceptions import CloudError
@@ -121,21 +125,165 @@ class QualifiedPath:
         return r
 
 
+class ComposableUri:
+    """A URI with changeable components
+
+    I wanted to use urllib.parse.ParseResult, but that class has made all its
+    attributes read only (...why?)
+    """
+
+    def __init__(
+            self,
+            scheme,
+            netloc,
+            path=[],
+            query={},
+            fragment=''):
+        self.scheme = scheme
+        self.netloc = netloc
+        self.path = path
+        self.query = query
+        self.fragment = fragment
+
+    @property
+    def uri(self):
+        q = '?' + urllib.encode(self.query) if self.query else ""
+        p = '/' + '/'.join(self.path)
+        f = '#' + self.fragment if self.fragment else ""
+        uri = f'{self.scheme}://{self.netloc}{p}{q}{f}'
+        log.debug(f'Composed URI "{uri}"')
+        return uri
+
+
+class AzureLogAnalyticsClient:
+    """Interact with the Azure web API for log analytics
+
+    Adapted from
+    https://docs.microsoft.com/en-us/azure/log-analytics/log-analytics-log-search-api-python
+    """
+
+    def __init__(
+            self,
+            subscription_id,
+            tenant_id,
+            application_id,
+            application_key,
+            resource_group,
+            workspace_name):
+
+        self.authcontext = adal.AuthenticationContext(
+            'https://login.microsoftonline.com/' + tenant_id)
+        self.application_id = application_id
+        self.application_key = application_key
+
+        # self.endpoint = f'https://management.azure.com/subscriptions/{subscription_id}/resourcegroups/{self.resource_group}/providers/Microsoft.OperationalInsights/workspaces/{self.workspace_name}/search'
+        self.endpoint = ComposableUri(
+            'https', 'management.azure.com',
+            path=[
+                'subscriptions', subscription_id,
+                'resourcegroups', resource_group,
+                'providers', 'Microsoft.OperationalInsights',
+                'workspaces', workspace_name,
+                'search'
+            ],
+            query={'api-version': '2015-11-01-preview'})
+
+    @property
+    def access_token(self):
+        """Get an access token from the authentication context API
+
+        Not clear how long this lasts, so I made it get a new one for each
+        query... if it lasts long enough, consider refactoring to just get set
+        in the constructor.
+        """
+        token_response = self.authcontext.acquire_token_with_client_credentials(
+            'https://management.core.windows.net/',
+            self.application_id, self.application_key)
+        return token_response.get('accessToken')
+
+    def query(
+            self,
+            query,
+            num_results=100,
+            end_time=datetime.datetime.utcnow(),
+            start_time=None):
+        """Run a query against the web API
+
+        query:          A query string
+        num_results:    Number of results to return
+        start_time:     Find events no earlier than this
+                        If unset, default to 24 hours before end_time
+        end_time:       Find events no later than this
+        """
+
+        # Unfortunately, you cannot set a parameter based on the value from
+        # another parameter, so we set the default here
+        if not start_time:
+            start_time = end_time - datetime.timedelta(hours=24)
+
+        headers = {
+            "Authorization": 'Bearer ' + self.access_token,
+            "Content-Type": 'application/json'}
+
+        dateformat = '%Y-%m-%dT%H:%M:%S'
+        search_params = {
+            "query": query,
+            # Note: if top is not passed, Azure only returns 10 results at once
+            "top": num_results,
+            "start": start_time.strftime(dateformat),
+            "end": end_time.strftime(dateformat)}
+
+        response = requests.post(
+            self.endpoint.uri, json=search_params, headers=headers)
+        log.debug(f"Posted initial search request. Response: '{response}'")
+
+        if response.status_code == 200:
+            data = response.json()
+            search_id = data["id"].split("/")[-1]
+            results_endpoint = copy.deepcopy(self.endpoint)
+            results_endpoint.path.append(search_id)
+
+            while data["__metadata"]["Status"] == "Pending":
+                log.debug(f"Search request '{search_id}' pending...")
+                response = requests.get(results_endpoint.uri, headers=headers)
+                data = response.json()
+                time.sleep(1)
+        else:
+            # Request failed
+            print(response.status_code)
+            response.raise_for_status()
+
+        log.verbose(textwrap.dedent("""
+            Search request successful!
+            Total records:" + str(data["__metadata"]["total"]))
+            Returned top:" + str(data["__metadata"]["top"]))
+            Value:
+            {data["value"]}
+            """))
+        return data["value"]
+
+
 class WinTrialLabAzureWrapper:
     """Wrap generic Azure API methods for WinTrialLab"""
 
+    _tenant_id = None
     _armclient = None
+    _loganalytics = None
 
     def __init__(
             self,
             service_principal_id,
             service_principal_key,
             tenant_name,
-            subscription_id):
+            subscription_id,
+            resource_group_name,
+            opinsights_workspace_name):
         self.service_principal_id = service_principal_id
         self.service_principal_key = service_principal_key
         self.tenant_name = tenant_name
         self.subscription_id = subscription_id
+        self.resource_group_name = resource_group_name
+        self.opinsights_workspace_name = opinsights_workspace_name
 
     @classmethod
     def tname2tid(cls, name):
@@ -165,6 +313,13 @@ class WinTrialLabAzureWrapper:
         return {k: {'value': v} for k, v in indict.items()}
 
     @property
+    def tenant_id(self):
+        """A lazily-loaded tenant id, based on the tenant name"""
+        if not self._tenant_id:
+            self._tenant_id = self.tname2tid(self.tenant_name)
+        return self._tenant_id
+
+    @property
     def armclient(self):
         """A lazily-loaded authenticated ResourceManagementClient
 
@@ -177,9 +332,18 @@ class WinTrialLabAzureWrapper:
                 ServicePrincipalCredentials(
                     client_id=self.service_principal_id,
                     secret=self.service_principal_key,
-                    tenant=self.tname2tid(self.tenant_name)),
+                    tenant=self.tenant_id),
                 self.subscription_id)
         return self._armclient
+
+    @property
+    def loganalytics(self):
+        if not self._loganalytics:
+            self._loganalytics = AzureLogAnalyticsClient(
+                self.subscription_id, self.tenant_id, self.application_id,
+                self.application_key, self.resource_group_name,
+                self.opinsights_workspace_name)
+        return self._loganalytics
 
     def testdeployed(self, name):
         """Test whether a resource group exists"""
@@ -208,7 +372,8 @@ class WinTrialLabAzureWrapper:
             parameters,
             deploymentname,
             deploymode='incremental',
-            deletefirst=False):
+            deletefirst=False,
+            validate=False):
         """Deploy a cloud builder template
 
         groupname:      the name of the resource group
@@ -219,6 +384,8 @@ class WinTrialLabAzureWrapper:
         deploymentname: the name for this deployment
         deploymode:     the Azure RM deployment mode
         deletefirst:    if True, delete the resource group before deploying
+        validate:       if True, do not deploy the template, but return whether
+                        it would deploy
         """
 
         if deletefirst:
@@ -233,12 +400,15 @@ class WinTrialLabAzureWrapper:
             'template': template,
             'parameters': self.templparam(parameters)}
 
-        async_operation = self.armclient.deployments.create_or_update(
-            groupname, deploymentname, deploy_params)
-
-        # .result() blocks until the operation is complete
-        result = async_operation.result()
-        return result.properties.outputs
+        if validate:
+            self.armclient.deployments.validate(
+                groupname, deploymentname, deploy_params)
+        else:
+            async_operation = self.armclient.deployments.create_or_update(
+                groupname, deploymentname, deploy_params)
+            # .result() blocks until the operation is complete
+            result = async_operation.result()
+            return result.properties.outputs
 
 
 class ProcessedDeployConfig:
@@ -289,22 +459,16 @@ class ProcessedDeployConfig:
 
         epilog = textwrap.dedent(f"""
             NOTES:
-
             1.  Many arguments are required, but any of them may come from a config file.
-
             2.  All arguments are represented in the config file with dashes replaced by
                 underscores; for instance, the --builder-vm-admin-password argument
                 corresponds to the builder_vm_admin_password entry in the config file.
-
             3.  See the config file in the same directory as this script for all options
                 and a few notes
-
             4.  Config files are read in this order:
-
                 1.  {self.mastercfg}
                 2.  {self.usercfg}
                 3.  Any config file passed on the command line with --config
-
                 Any value in a later, existing config file will overwrite values from
                 earlier config files.
             """)
@@ -353,10 +517,15 @@ class ProcessedDeployConfig:
         deployopts.add_argument('--deployment-name')
         deployopts.add_argument('--resource-group-location')
         deployopts.add_argument('--storage-account-name')
+        deployopts.add_argument('--opinsights-workspace-name')
         deployopts.add_argument('--builder-vm-size')
         deployopts.add_argument(
             '--delete', action='store_true',
             help="If the resource group already exists, delete it before starting the deployment.")
+
+        # Options for the log subcommand
+        logopts = argparse.ArgumentParser(add_help=False)
+        logopts.add_argument('--query')
 
         # Configure subcommands
         subparsers = parser.add_subparsers(dest="action")
@@ -368,11 +537,18 @@ class ProcessedDeployConfig:
             parents=[templateopts, buildvmcredopts, azurecredopts, azurergopts, deployopts],
             help='Deploy the ARM template to Azure')
         subparsers.add_parser(
+            'validate',
+            parents=[templateopts, buildvmcredopts, azurecredopts, azurergopts, deployopts],
+            help='Validate the ARM template')
+        subparsers.add_parser(
             'delete', parents=[azurecredopts, azurergopts],
             help='Delete an Azure Resource Group')
         subparsers.add_parser(
             'testgroup', parents=[azurecredopts],
             help='Check if the resource group has been deployed')
+        subparsers.add_parser(
+            'log', parents=[azurecredopts, azurergopts, logopts],
+            help='Query the Azure Operational Insights log analytics service')
 
         return parser.parse_args()
 
@@ -410,11 +586,11 @@ class ProcessedDeployConfig:
             if not getattr(obj, name):
                 setattr(obj, name, default)
 
+        datestamp = datetime.datetime.now().strftime('%Y-%d-%m-%H-%M-%S')
         setifempty(self, 'builder_vm_admin_password', genpass())
         setifempty(self, 'arm_template', self.defaulttempl)
-
-        datestamp = datetime.datetime.now().strftime('%Y-%d-%m-%H-%M-%S')
         setifempty(self, 'deployment_name', f'wintriallab-{datestamp}')
+        setifempty(self, 'opinsights_workspace_name', f'wintriallab-{datestamp}')
 
     def check_required_params(self):
         """Check the required parameters
@@ -437,7 +613,7 @@ class ProcessedDeployConfig:
                 'tenant',
                 'subscription_id',
                 'resource_group_name']
-        elif self.action == 'deploy':
+        elif self.action == 'deploy' or self.action == 'validate':
             required = [
                 'arm_template',
                 'service_principal_id',
@@ -447,6 +623,7 @@ class ProcessedDeployConfig:
                 'resource_group_name',
                 'resource_group_location',
                 'storage_account_name',
+                'opinsights_workspace_name',
                 'builder_vm_admin_username',
                 'builder_vm_admin_password',
                 'builder_vm_size',
@@ -458,6 +635,20 @@ class ProcessedDeployConfig:
                 'tenant',
                 'subscription_id',
                 'resource_group_name']
+        elif self.action == 'log':
+            required = [
+                'service_principal_id',
+                'service_principal_key',
+                'tenant',
+                'subscription_id',
+                'resource_group_name',
+                'resource_group_location',
+                'storage_account_name',
+                'opinsights_workspace_name',
+                'builder_vm_admin_username',
+                'builder_vm_admin_password',
+                'builder_vm_size',
+                'query']
         else:
             raise Exception(f"I don't know how to handle an action of '{self.action}'")
 
@@ -483,7 +674,9 @@ def main(*args, **kwargs):
         config.service_principal_id,
         config.service_principal_key,
         config.tenant,
-        config.subscription_id)
+        config.subscription_id,
+        config.resource_group_name,
+        config.opinsights_workspace_name)
 
     with open(config.arm_template) as tf:
         template = yaml.load(tf)
@@ -492,7 +685,7 @@ def main(*args, **kwargs):
         jsonfile = config.arm_template.replace('.yaml', '.json')
         with open(jsonfile, 'w+') as jtf:
             jtf.write(json.dumps(template, indent=2))
-        print("Converted template from YAML to JSON and saved to {jsontempl}")
+        print(f"Converted template from YAML to JSON and saved to {jsonfile}")
 
     elif config.action == 'testgroup':
         if wtlazwrapper.testdeployed(config.resource_group_name):
@@ -504,22 +697,26 @@ def main(*args, **kwargs):
         wtlazwrapper.deletegroup(config.resource_group_name)
         print(f"Deleted resource group '{config.resource_group_name}'")
 
-    elif config.action == 'deploy':
+    elif config.action == 'deploy' or config.action == 'validate':
         outputs = wtlazwrapper.deploytempl(
             config.resource_group_name,
             config.resource_group_location,
             template,
             {
                 'storageAccountName':       config.storage_account_name,
+                'opInsightsWorkspaceName':  config.opinsights_workspace_name,
                 'builderVmAdminUsername':   config.builder_vm_admin_username,
                 'builderVmAdminPassword':   config.builder_vm_admin_password,
                 'builderVmSize':            config.builder_vm_size},
             config.deployment_name,
-            deletefirst=config.delete)
+            deletefirst=config.delete,
+            validate=(config.action == 'validate'))
 
         conninfo = outputs['builderConnectionInformation']['value']
         print('Deployment completed. To connect, run connect.py on your Docker *host* machine (not within the container) like so:')
         print(f"connect.py {conninfo['IPAddress']} {conninfo['Username']} '{conninfo['Password']}'")
+    elif config.action == 'log':
+        print(wtlazwrapper.loganalytics.query(config.query))
     else:
         raise Exception(f"I don't know how to process an action called '{config.action}'")
 

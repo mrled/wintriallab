@@ -6,7 +6,16 @@ parameters:
   storageAccountName:
     type: string
     metadata:
-      description: Storage Account Name; must be a valid Azure DNS hostname
+      description: Name for existing Azure Storage Account. Must be globally unique, and a valid Azure DNS hostname.
+  opInsightsWorkspaceName:
+    type: string
+    metadata:
+      description: Name for new Operational Insights workspace. Must be globally unique.
+  opInsightsWorkspaceLocation:
+    type: string
+    defaultValue: westcentralus
+    metadata:
+      description: Location for new Operational Insights workspace. Unfortunately these are somewhat restricted.
   builderVmAdminPassword:
     type: securestring
   builderVmAdminUsername:
@@ -21,8 +30,9 @@ parameters:
 
 variables:
 
-  # This must be a *string* value, or else it gets turned into a Date object in deploy.py
-  apiVersion: "2015-06-15"
+  # This must be a *string literal*, or else it might get turned into a Date object in deploy.py
+  apiVersionInfrastructure: "2015-06-15"
+  apiVersionOpInsights: "2015-11-01-preview"  # ugh
 
   storageAccountType: Standard_LRS
   storageAccountId: "[concat('Microsoft.Storage/storageAccounts/', parameters('storageAccountName'))]"
@@ -39,10 +49,11 @@ variables:
   wtlDeployInitUri:   "[concat('https://raw.githubusercontent.com/', variables('wtlRepoSubpath'), '/', variables('wtlRepoBranch'), '/azure/deployInit.ps1')]"
   wtlDeployInitPath: "$env:SystemDrive\\deployInit.ps1"
 
+  deployExtName: "wtlDscExtension"
   deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'))]"
   deployExeRunCmd: "[concat('& ', variables('wtlDeployInitPath'), ' -wtlRepoUri ', variables('wtlRepoCheckoutUri'), ' -wtlRepoBranch ', variables('wtlRepoBranch'))]"
   deployExtFullCmd: "[concat(variables('deployExtDownloadCmd'), ';', variables('deployExeRunCmd'), ';')]"
-  deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtFullCommand'), '} \"')]"
+  deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtFullCmd'), '} \"')]"
 
   vnetName: wintrialnet
   vnetId: "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
@@ -67,21 +78,31 @@ variables:
 resources:
 - type: Microsoft.Storage/storageAccounts
   name: "[parameters('storageAccountName')]"
-  apiVersion: "[variables('apiVersion')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
   location: "[resourceGroup().location]"
   properties:
     accountType: "[variables('storageAccountType')]"
 
+- type: Microsoft.OperationalInsights/workspaces
+  name: "[parameters('opInsightsWorkspaceName')]"
+  apiVersion: "[variables('apiVersionOpInsights')]"
+  location: "[parameters('opInsightsWorkspaceLocation')]"
+  properties:
+    sku:
+      name: free
+    # NOTE: Docs say this should be "retentionInDays", but that's wrong, it must be "retention"
+    retention: 7
+
 - type: Microsoft.Network/publicIPAddresses
   name: "[variables('pubIpAddrName')]"
-  apiVersion: "[variables('apiVersion')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
   location: "[resourceGroup().location]"
   properties:
     publicIPAllocationMethod: "[variables('pubIpAddrType')]"
 
 - type: Microsoft.Network/virtualNetworks
   name: "[variables('vnetName')]"
-  apiVersion: "[variables('apiVersion')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
   location: "[resourceGroup().location]"
   properties:
     addressSpace:
@@ -94,7 +115,7 @@ resources:
 
 - type: Microsoft.Network/networkInterfaces
   name: "[variables('nicName')]"
-  apiVersion: "[variables('apiVersion')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
   location: "[resourceGroup().location]"
   dependsOn:
   - "[variables('pubIpAddrId')]"
@@ -111,7 +132,7 @@ resources:
 
 - type: Microsoft.Compute/virtualMachines
   name: "[variables('builderVmName')]"
-  apiVersion: "[variables('apiVersion')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
   location: "[resourceGroup().location]"
   dependsOn:
   - "[variables('storageAccountId')]"
@@ -141,7 +162,7 @@ resources:
   resources:
   - type: extensions
     name: "[variables('deployExtName')]"
-    apiVersion: "[variables('apiVersion')]"
+    apiVersion: "[variables('apiVersionInfrastructure')]"
     location: "[resourceGroup().location]"
     dependsOn:
       - "[variables('builderVmName')]"
@@ -160,3 +181,8 @@ outputs:
       Username: "[parameters('builderVmAdminUsername')]"
       Password: "[parameters('builderVmAdminPassword')]"
       IPAddress: "[reference(variables('pubIpAddrName')).ipAddress]"
+  opInsightsWorkspace:
+    type: object
+    value:
+      name: "[parameters('opInsightsWorkspaceName')]"
+      location: "[parameters('opInsightsWorkspaceLocation')]"
