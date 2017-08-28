@@ -43,10 +43,12 @@ variables:
   builderVmOsDiskName: "[concat(variables('builderVmName'), '-osdisk')]"
   builderVmOsDiskUri: "[concat(variables('storageAccountUri'), '/vhds/', variables('builderVmOsDiskName'), '.vhd')]"
 
-  wtlRepoSubpath: "mrled/wintriallab"
-  wtlRepoCheckoutUri: "[concat('https://github.com/', variables('wtlRepoSubpath'))]"
+  # wtlRepoCheckoutUri: "[concat('https://github.com/', variables('wtlRepoSubpath'))]"
+  wtlRepoSubpath:     "mrled/wintriallab"
   wtlRepoBranch:      "azure-builder"
   wtlDeployInitUri:   "[concat('https://raw.githubusercontent.com/', variables('wtlRepoSubpath'), '/', variables('wtlRepoBranch'), '/azure/deployInit.ps1')]"
+  wtlRepoZipUri:      "[concat('https://github.com/', variables('wtlRepoSubpath'), '/archive/', variables('wtlRepoBranch'), '.zip')]"
+
   wtlDeployInitPath: "$env:SystemDrive\\deployInit.ps1"
 
   deployExtName: "wtlDscExtension"
@@ -60,7 +62,7 @@ variables:
     [concat(
       'powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command "& { '
         'Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'), ';',
-        '& ', variables('wtlDeployInitPath'), ' -wtlRepoUri ', variables('wtlRepoCheckoutUri'), ' -wtlRepoBranch ', variables('wtlRepoBranch') ';',
+        '& ', variables('wtlDeployInitPath'), ' -wtlRepoZipUri ', variables('wtlRepoZipUri'), ';',
       '} "'
     )]
 
