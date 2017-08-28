@@ -50,12 +50,21 @@ variables:
   wtlDeployInitPath: "$env:SystemDrive\\deployInit.ps1"
 
   deployExtName: "wtlDscExtension"
-  deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'))]"
-  deployExeRunCmd: "[concat('& ', variables('wtlDeployInitPath'), ' -wtlRepoUri ', variables('wtlRepoCheckoutUri'), ' -wtlRepoBranch ', variables('wtlRepoBranch'))]"
-  deployExtFullCmd: "[concat(variables('deployExtDownloadCmd'), ';', variables('deployExeRunCmd'), ';')]"
-  deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtFullCmd'), '} \"')]"
 
-  vnetName: wintrialnet
+  # deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'))]"
+  # deployExeRunCmd: "[concat('& ', variables('wtlDeployInitPath'), ' -wtlRepoUri ', variables('wtlRepoCheckoutUri'), ' -wtlRepoBranch ', variables('wtlRepoBranch'))]"
+  # deployExtFullCmd: "[concat(variables('deployExtDownloadCmd'), ';', variables('deployExeRunCmd'), ';')]"
+  # deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtFullCmd'), '} \"')]"
+
+  deployExtInvocation: >
+    [concat(
+      'powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command "& { '
+        'Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'), ';',
+        '& ', variables('wtlDeployInitPath'), ' -wtlRepoUri ', variables('wtlRepoCheckoutUri'), ' -wtlRepoBranch ', variables('wtlRepoBranch') ';',
+      '} "'
+    )]
+
+  vnetName: "wintrialnet"
   vnetId: "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
   vnetAddressPrefix: 172.16.0.0/24
 
