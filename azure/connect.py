@@ -1,6 +1,9 @@
+#!/usr/bin/env python3
+
 import argparse
 import collections
 import logging
+import re
 import subprocess
 import sys
 
@@ -59,6 +62,42 @@ def rdp_win(server, username, password):
         cmdkey(f'/delete:{entryname}')
 
 
+def rfc_1738_encode(text):
+    """Encode username/password for use in URLs
+
+    Example: A password of 'b@d:/st%ff' becomes 'b%40d%3A%2Fst%25ff' after
+    encoding. Note that this is different from URL encoding e.g. '/some path/'
+    to '/some%20path'.
+
+    Via https://www.metabrite.com/devblog/posts/python-obfuscate-url-password/
+    """
+    def replacement(match):
+        return "%%%X" % ord(match.group(0))
+    return re.sub(r'[:@/%]', replacement, text)
+
+
+def cord_mac(server, username, password):
+    """Connect to a server using CoRD on macOS
+
+    Like Remote Desktop Connection for Windows, there's no way to pass a
+    username/password on the command line. Unlike RDC for Windows, there's not
+    a good cmdkey.exe equivalent either. RDC appears to use the macOS Keychain,
+    which could work in theory, but would require the keychain password every
+    time.
+
+    Instead we use CoRD, a third party Remote Desktop client for macOS.
+    """
+
+    # This didn't work for me - it doesn't seem to be able to handle the password propertly
+    # rdpuri = f'rdp://{rfc_1738_encode(username)}:{rfc_1738_encode(password)}@{server}'
+    # print(f"Connecting to {rdpuri}")
+    # subprocess.check_output(['open', '-a', '/Applications/CoRD.app', rdpuri])
+
+    subprocess.check_output([
+        '/Applications/CoRD.app/Contents/MacOS/CoRD', '-host', server,
+        '-u', username, '-p', password])
+
+
 def main(*args, **kwargs):
     parser = argparse.ArgumentParser()
     parser.add_argument('--verbose', '-v', action='store_true')
@@ -70,7 +109,13 @@ def main(*args, **kwargs):
     if parsed.verbose:
         log.setLevel(logging.DEBUG)
 
-    rdp_win(parsed.hostname, parsed.username, parsed.password)
+    if sys.platform == "win32":
+        rdp_win(parsed.hostname, parsed.username, parsed.password)
+    elif sys.platform == "darwin":
+        cord_mac(parsed.hostname, parsed.username, parsed.password)
+    else:
+        raise Exception(
+            f"No RDP connector configured for platform '{sys.platform}'")
 
 
 if __name__ == '__main__':
