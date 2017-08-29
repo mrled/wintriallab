@@ -105,7 +105,7 @@ function New-TemporaryDirectory {
 # This is a bit of a hack, but lets us define functions in this file that we want to use in dscConfiguration.ps1
 if ($MyInvocation.InvocationName -ne '.') {
     Write-EventLogWrapper -message "Initializing the WinTrialLab cloud builder deployment..."
-    Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope Machine
+    Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine
 
     # Install DSC prerequisites
     Install-PackageProvider -Name NuGet -Force
