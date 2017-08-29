@@ -52,19 +52,15 @@ variables:
   wtlDeployInitPath: "$env:SystemDrive\\deployInit.ps1"
 
   deployExtName: "wtlDscExtension"
+  deployExtInvocation: "[concat(
+    'powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& { ',
+      'Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'), ';',
+      '& ', variables('wtlDeployInitPath'), ' -wtlRepoZipUri ', variables('wtlRepoZipUri'), ';',
+    '}\"'
+  )]"
 
-  # deployExtDownloadCmd: "[concat('Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'))]"
-  # deployExeRunCmd: "[concat('& ', variables('wtlDeployInitPath'), ' -wtlRepoUri ', variables('wtlRepoCheckoutUri'), ' -wtlRepoBranch ', variables('wtlRepoBranch'))]"
-  # deployExtFullCmd: "[concat(variables('deployExtDownloadCmd'), ';', variables('deployExeRunCmd'), ';')]"
-  # deployExtInvocation:  "[concat('powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& {', variables('deployExtFullCmd'), '} \"')]"
-
-  deployExtInvocation: >
-    [concat(
-      'powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command "& { '
-        'Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'), ';',
-        '& ', variables('wtlDeployInitPath'), ' -wtlRepoZipUri ', variables('wtlRepoZipUri'), ';',
-      '} "'
-    )]
+  opInsightsExtName: wtlOpInsightsExt
+  opInsightsWorkspaceId: "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('opInsightsWorkspaceName'))]"
 
   vnetName: "wintrialnet"
   vnetId: "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
@@ -184,6 +180,22 @@ resources:
       autoUpgradeMinorVersion: true
       settings:
         commandToExecute:  "[variables('deployExtInvocation')]"
+  # - type: extensions
+  #   name: "[variables('opInsightsExtName')]"
+  #   apiVersion: "[variables('apiVersionInfrastructure')]"
+  #   location: "[resourceGroup().location]"
+  #   dependsOn:
+  #   - "[variables('builderVmName')]"
+  #   properties:
+  #     publisher: Microsoft.EnterpriseCloud.Monitoring
+  #     type: MicrosoftMonitoringAgent
+  #     typeHandlerVersion: "1.0"
+  #     autoUpgradeMinorVersion: true
+  #     settings:
+  #       workspaceId: "[variables('opInsightsWorkspaceId')]"
+  #     protectedSettings:
+  #       # ... no idea what's going on here
+  #       workspaceKey: "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', parameters('opInsightsWorkspaceName')), '2015-03-20').primarySharedKey]"
 
 outputs:
   builderConnectionInformation:
