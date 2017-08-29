@@ -590,7 +590,6 @@ class ProcessedDeployConfig:
         setifempty(self, 'builder_vm_admin_password', genpass())
         setifempty(self, 'arm_template', self.defaulttempl)
         setifempty(self, 'deployment_name', f'wintriallab-{datestamp}')
-        setifempty(self, 'opinsights_workspace_name', f'wintriallab-{datestamp}')
 
     def check_required_params(self):
         """Check the required parameters
@@ -679,19 +678,29 @@ def main(*args, **kwargs):
         config.opinsights_workspace_name)
 
     with open(config.arm_template) as tf:
-        template = yaml.load(tf)
+        # Convert to JSON first to ensure that the template we see from
+        # convertyaml is exactly what Azure sees
+        json_template = json.dumps(yaml.load(tf), indent=2)
+        template = json.loads(json_template)
+
+    def save_json_template(
+            dictionary=json_template,
+            jsonfile=config.arm_template.replace('.yaml', '.json')):
+        with open(jsonfile, 'w+') as jtf:
+            jtf.write(dictionary)
+        print(f"Converted template from YAML to JSON and saved to {jsonfile}")
+
+    if config.debug:
+        save_json_template()
 
     if config.action == 'convertyaml':
-        jsonfile = config.arm_template.replace('.yaml', '.json')
-        with open(jsonfile, 'w+') as jtf:
-            jtf.write(json.dumps(template, indent=2))
-        print(f"Converted template from YAML to JSON and saved to {jsonfile}")
+        save_json_template()
 
     elif config.action == 'testgroup':
         if wtlazwrapper.testdeployed(config.resource_group_name):
-            print(f"YES, the resource group '{config.resource_group_name}'' is deployed and costing you $$$")
+            print(f"YES, the resource group '{config.resource_group_name}' is deployed and costing you $$$")
         else:
-            print(f"NO, the resource group '{config.resource_group_name}'' is not present")
+            print(f"NO, the resource group '{config.resource_group_name}' is not present")
 
     elif config.action == 'delete':
         wtlazwrapper.deletegroup(config.resource_group_name)
