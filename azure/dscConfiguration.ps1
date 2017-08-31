@@ -60,9 +60,12 @@ Configuration DSConfigure-WinTrialBuilder {
         }
 
         cChocoInstaller "InstallChoco" {
+            # Also adds $env:ChocolateyInstall to $env:PATH
             InstallDir = $chocoInstallDir
         }
         cChocoPackageInstaller "ChocoInstallPacker" {
+            # Installed to $chocoInstallDir/bin as of 1.0.4
+            # https://github.com/StefanScherer/choco-packer/blob/6a059db2d8ec8f1bbc378ee6792d45e5eea54479/tools/chocolateyInstall.ps1
             Name      = 'packer'
             Ensure    = 'Present'
             DependsOn = '[cChocoInstaller]InstallChoco'
