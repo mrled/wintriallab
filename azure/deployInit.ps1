@@ -100,42 +100,37 @@ function New-TemporaryDirectory {
     New-Item -ItemType Directory -Path $newTempDirPath
 }
 
-# Guard against dot-sourcing
-# If we are dot-sourced, define the functions above, but do not actually execute any deployment code
-# This is a bit of a hack, but lets us define functions in this file that we want to use in dscConfiguration.ps1
-if ($MyInvocation.InvocationName -ne '.') {
-    Write-EventLogWrapper -message "Initializing the WinTrialLab cloud builder deployment..."
-    Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine
+Write-EventLogWrapper -message "Initializing the WinTrialLab cloud builder deployment..."
+Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine
 
-    # Install DSC prerequisites
-    Install-PackageProvider -Name NuGet -Force
-    Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-    Install-Module -Name xHyper-V, cChoco
+# Install DSC prerequisites
+Install-PackageProvider -Name NuGet -Force
+Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+Install-Module -Name xHyper-V, cChoco
 
-    # Download the wintriallab repo
-    $wtlDlDir = New-TemporaryDirectory
-    $wtlExtractDir = New-TemporaryDirectory
-    $wtlZipFile = Join-Path -Path $wtlDlDir -ChildPath "wtl.zip"
-    Invoke-WebRequest -Uri $wtlRepoZipUri -OutFile $wtlZipFile
-    Expand-Archive -Path $wtlZipFile -DestinationPath $wtlExtractDir
-    $wtlDir = Get-ChildItem -Path $wtlExtractDir | Select-Object -First 1 -ExpandProperty FullName
-    Write-EventLogWrapper "wintriallab files and directories:`r`nwtlDlDir = '$wtlDlDir'`r`nwtlExtractDir = '$wtlExtractDir'`r`nwtlZipFile = '$wtlZipFile'`r`nwtlDir = '$wtlDir'`r`n"
+# Download the wintriallab repo
+$wtlDlDir = New-TemporaryDirectory
+$wtlExtractDir = New-TemporaryDirectory
+$wtlZipFile = Join-Path -Path $wtlDlDir -ChildPath "wtl.zip"
+Invoke-WebRequest -Uri $wtlRepoZipUri -OutFile $wtlZipFile
+Expand-Archive -Path $wtlZipFile -DestinationPath $wtlExtractDir
+$wtlDir = Get-ChildItem -Path $wtlExtractDir | Select-Object -First 1 -ExpandProperty FullName
+Write-EventLogWrapper "wintriallab files and directories:`r`nwtlDlDir = '$wtlDlDir'`r`nwtlExtractDir = '$wtlExtractDir'`r`nwtlZipFile = '$wtlZipFile'`r`nwtlDir = '$wtlDir'`r`n"
 
-    # Get the DSC configuration
-    Write-EventLogWrapper "Invoking DSC configuration..."
-    . "$wtlDir\azure\dscConfiguration.ps1"
+# Get the DSC configuration
+Write-EventLogWrapper "Invoking DSC configuration..."
+. "$wtlDir\azure\dscConfiguration.ps1"
 
-    # Initialize DSC configuration
-    $dscWorkDirBase = New-TemporaryDirectory | Select-Object -ExpandProperty FullName
-    Write-EventLogWrapper -message "Using '$dscWorkDirBase' for DSC configurations"
+# Initialize DSC configuration
+$dscWorkDirBase = New-TemporaryDirectory | Select-Object -ExpandProperty FullName
+Write-EventLogWrapper -message "Using '$dscWorkDirBase' for DSC configurations"
 
-    # Configure the Local Configuration Manager first
-    $lcmWorkDir = Join-Path $dscWorkDirBase "LocalConfigurationManager"
-    DSConfigure-LocalConfigurationManager -OutputPath $lcmWorkDir | Write-EventLogWrapper
-    Set-DscLocalConfigurationManager -Path $lcmWorkDir | Write-EventLogWrapper
+# Configure the Local Configuration Manager first
+$lcmWorkDir = Join-Path $dscWorkDirBase "LocalConfigurationManager"
+DSConfigure-LocalConfigurationManager -OutputPath $lcmWorkDir | Write-EventLogWrapper
+Set-DscLocalConfigurationManager -Path $lcmWorkDir | Write-EventLogWrapper
 
-    # Now run the WinTrialLab DSC configuration
-    $wtlWorkDir = Join-Path $dscWorkDirBase "WinTrialLab"
-    DSConfigure-WinTrialBuilder -OutputPath $wtlWorkDir | Write-EventLogWrapper
-    Start-DscConfiguration -Path $wtlWorkDir | Write-EventLogWrapper
-}
+# Now run the WinTrialLab DSC configuration
+$wtlWorkDir = Join-Path $dscWorkDirBase "WinTrialLab"
+DSConfigure-WinTrialBuilder -OutputPath $wtlWorkDir | Write-EventLogWrapper
+Start-DscConfiguration -Path $wtlWorkDir | Write-EventLogWrapper

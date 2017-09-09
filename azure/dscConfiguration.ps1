@@ -12,7 +12,13 @@ DSC configurations for WinTrialLab
     [string] $caryatidAssetRegex = '^caryatid_windows_amd64_.*\.zip$'
 )
 
-. $PSScriptRoot\deployInit.ps1
+function New-TemporaryDirectory {
+    $newTempDirPath = ""
+    do {
+        $newTempDirPath = Join-Path $env:TEMP (New-Guid | Select-Object -ExpandProperty Guid)
+    } while (Test-Path -Path $newTempDirPath)
+    New-Item -ItemType Directory -Path $newTempDirPath
+}
 
 [DSCLocalConfigurationManager()]
 Configuration DSConfigure-LocalConfigurationManager {
