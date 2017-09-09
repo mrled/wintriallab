@@ -252,7 +252,7 @@ class AzureLogAnalyticsClient:
                 time.sleep(1)
         else:
             # Request failed
-            print(response.status_code)
+            log.info(response.status_code)
             response.raise_for_status()
 
         log.verbose(textwrap.dedent("""
@@ -678,9 +678,10 @@ def main(*args, **kwargs):
         log.setLevel(logging.DEBUG)
 
     if config.showconfig:
-        print("PROCESSED CONFIGURATION: ")
+        msg = "PROCESSED CONFIGURATION:\n"
         for k, v in config.__dict__.items():
-            print(f"{k} = {v}")
+            msg += f"{k} = {v}\n"
+        log.info(msg)
         return 0
 
     wtlazwrapper = WinTrialLabAzureWrapper(
@@ -702,7 +703,7 @@ def main(*args, **kwargs):
             jsonfile=config.arm_template.replace('.yaml', '.json')):
         with open(jsonfile, 'w+') as jtf:
             jtf.write(dictionary)
-        print(f"Converted template from YAML to JSON and saved to {jsonfile}")
+        log.info(f"Converted template from YAML to JSON and saved to {jsonfile}")
 
     if config.debug:
         save_json_template()
@@ -711,19 +712,20 @@ def main(*args, **kwargs):
         save_json_template()
 
     elif config.action == 'genpass':
-        print(genpass(config.pass_length))
+        log.info(f"Generated passphrase: {genpass(config.pass_length)}")
 
     elif config.action == 'testgroup':
         if wtlazwrapper.testdeployed(config.resource_group_name):
-            print(f"YES, the resource group '{config.resource_group_name}' is deployed and costing you $$$")
+            log.info(f"YES, the resource group '{config.resource_group_name}' is deployed and costing you $$$")
         else:
-            print(f"NO, the resource group '{config.resource_group_name}' is not present")
+            log.info(f"NO, the resource group '{config.resource_group_name}' is not present")
 
     elif config.action == 'delete':
         wtlazwrapper.deletegroup(config.resource_group_name)
-        print(f"Deleted resource group '{config.resource_group_name}'")
+        log.info(f"Deleted resource group '{config.resource_group_name}'")
 
     elif config.action == 'deploy' or config.action == 'validate':
+        log.info(f"Using builder VM password '{config.builder_vm_admin_password}'")
         outputs = wtlazwrapper.deploytempl(
             config.resource_group_name,
             config.resource_group_location,
@@ -739,10 +741,11 @@ def main(*args, **kwargs):
             validate=(config.action == 'validate'))
 
         conninfo = outputs['builderConnectionInformation']['value']
-        print('Deployment completed. To connect, run connect.py on your Docker *host* machine (not within the container) like so:')
-        print(f"connect.py {conninfo['IPAddress']} {conninfo['Username']} '{conninfo['Password']}'")
+        msg = "Deployment completed. To connect, run connect.py on your Docker *host* machine (not within the container) like so:"
+        msg += f"connect.py {conninfo['IPAddress']} {conninfo['Username']} '{conninfo['Password']}'"
+        log.info(msg)
     elif config.action == 'log':
-        print(wtlazwrapper.loganalytics.query(config.query))
+        log.info(wtlazwrapper.loganalytics.query(config.query))
     else:
         raise Exception(f"I don't know how to process an action called '{config.action}'")
 
