@@ -64,21 +64,23 @@ def genpass(length=24):
     """Generate a passphrase that will meet default Windows complexity reqs
 
     Is this like, a good idea? Idk, maybe not. I'm hoping that whatever is
-    wrong with my algorithm is worked around by the length.
+    wrong with my algorithm is worked around by the length and mitigated by the
+    short length of time this machine should be up.
+
+    ¡¡ More thought required for other scenarios !!
     """
 
-    # Keep quotes and escape characters out of this list so the password will
-    # be easy to pass on the commandline inside quotes
-    symbols = r'!@#$%^&*(),.<>/?;:[]{}|~'
-    alphabet = string.ascii_letters + string.digits + symbols
+    # This list is restricted to characters that don't require escaping on the
+    # command line for sh, cmd, or PowerShell shells so that it's easy to copy
+    # and paste.
+    alphabet = string.ascii_letters + string.digits
 
     def testwinpass(password):
         """Test whether a password will meet default Windows complexity reqs"""
         return (
             any(c.islower() for c in password) and
             any(c.isupper() for c in password) and
-            any(c.isdigit() for c in password) and
-            any(c in symbols for c in password))
+            any(c.isdigit() for c in password))
 
     while True:
         password = ''.join(secrets.choice(alphabet) for i in range(length))
@@ -421,6 +423,14 @@ class ProcessedDeployConfig:
     usercfg = os.path.join(homedir(), '.wintriallab.cloudbuilder.cfg')
     defaulttempl = os.path.join(scriptdir, 'cloudbuilder.yaml')
 
+    # Set a key name and a type value
+    # 'get' + the type value must be a valid ConfigParser getter
+    # For instance, a value type of 'boolean' will call 'config.getboolean()'
+    # Any types not included here are assumed to be strings
+    config_value_types = {
+        'debug': 'boolean',
+        'pass_length': 'int'}
+
     def __init__(self, *args, **kwargs):
 
         parsed = self.parseargs(*args, **kwargs)
@@ -469,8 +479,9 @@ class ProcessedDeployConfig:
                 1.  {self.mastercfg}
                 2.  {self.usercfg}
                 3.  Any config file passed on the command line with --config
-                Any value in a later, existing config file will overwrite values from
-                earlier config files.
+            5.  Any value in a later, existing config file will override values from
+                earlier config files, and arguments passed on the command line will
+                override values from all config files.
             """)
 
         parser = argparse.ArgumentParser(
@@ -527,6 +538,12 @@ class ProcessedDeployConfig:
         logopts = argparse.ArgumentParser(add_help=False)
         logopts.add_argument('--query')
 
+        # Options for the genpass subcommand
+        genpassopts = argparse.ArgumentParser(add_help=False)
+        genpassopts.add_argument(
+            '--pass-length', default=24, type=int,
+            help='Length of the passphrase to generate.')
+
         # Configure subcommands
         subparsers = parser.add_subparsers(dest="action")
         subparsers.add_parser(
@@ -534,7 +551,7 @@ class ProcessedDeployConfig:
             help='Convert the YAML template to JSON')
         subparsers.add_parser(
             'deploy',
-            parents=[templateopts, buildvmcredopts, azurecredopts, azurergopts, deployopts],
+            parents=[templateopts, buildvmcredopts, azurecredopts, azurergopts, deployopts, genpassopts],
             help='Deploy the ARM template to Azure')
         subparsers.add_parser(
             'validate',
@@ -549,6 +566,8 @@ class ProcessedDeployConfig:
         subparsers.add_parser(
             'log', parents=[azurecredopts, azurergopts, logopts],
             help='Query the Azure Operational Insights log analytics service')
+        subparsers.add_parser(
+            'genpass', parents=[genpassopts], help='Generate a passphrase')
 
         return parser.parse_args()
 
@@ -557,20 +576,13 @@ class ProcessedDeployConfig:
         configdict = {}
         config = configparser.ConfigParser()
         config.read(allconfigs)
+
         for k in config['DEFAULT'].keys():
-            configdict[k] = config['DEFAULT'].get(k)
-
-        # Munge dictionary values to be the right types
-        def setboolval(dictionary, key):
-            if key in dictionary.keys():
-                if dictionary[key].lower() in ['true', 'yes', 1]:
-                    return True
-                elif dictionary[key].lower() in ['false', 'no', 0]:
-                    return False
-                else:
-                    raise Exception("Could not parse boolean value '{dictionary[key]}' for key '{key}'")
-
-        setboolval(configdict, 'debug')
+            if k in self.config_value_types:
+                getvalue = getattr(config['DEFAULT'], 'get' + self.config_value_types[k])
+            else:
+                getvalue = getattr(config['DEFAULT'], 'get')
+            configdict[k] = getvalue(k)
 
         return configdict
 
@@ -587,7 +599,7 @@ class ProcessedDeployConfig:
                 setattr(obj, name, default)
 
         datestamp = datetime.datetime.now().strftime('%Y-%d-%m-%H-%M-%S')
-        setifempty(self, 'builder_vm_admin_password', genpass())
+        setifempty(self, 'builder_vm_admin_password', genpass(self.pass_length))
         setifempty(self, 'arm_template', self.defaulttempl)
         setifempty(self, 'deployment_name', f'wintriallab-{datestamp}')
 
@@ -648,6 +660,8 @@ class ProcessedDeployConfig:
                 'builder_vm_admin_password',
                 'builder_vm_size',
                 'query']
+        elif self.action == 'genpass':
+            required = ['pass_length']
         else:
             raise Exception(f"I don't know how to handle an action of '{self.action}'")
 
@@ -695,6 +709,9 @@ def main(*args, **kwargs):
 
     if config.action == 'convertyaml':
         save_json_template()
+
+    elif config.action == 'genpass':
+        print(genpass(config.pass_length))
 
     elif config.action == 'testgroup':
         if wtlazwrapper.testdeployed(config.resource_group_name):
