@@ -118,7 +118,7 @@ if ($MyInvocation.InvocationName -ne '.') {
     $wtlZipFile = Join-Path -Path $wtlDlDir -ChildPath "wtl.zip"
     Invoke-WebRequest -Uri $wtlRepoZipUri -OutFile $wtlZipFile
     Expand-Archive -Path $wtlZipFile -DestinationPath $wtlExtractDir
-    $wtlDir = Get-ChildItem -Path $wtlExtractDir | Select-Object -First 1
+    $wtlDir = Get-ChildItem -Path $wtlExtractDir | Select-Object -First 1 -ExpandProperty FullName
     Write-EventLogWrapper "wintriallab files and directories:`r`nwtlDlDir = '$wtlDlDir'`r`nwtlExtractDir = '$wtlExtractDir'`r`nwtlZipFile = '$wtlZipFile'`r`nwtlDir = '$wtlDir'`r`n"
 
     # Get the DSC configuration
