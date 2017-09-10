@@ -429,6 +429,7 @@ class ProcessedDeployConfig:
     # Any types not included here are assumed to be strings
     config_value_types = {
         'debug': 'boolean',
+        'delete': 'boolean',
         'pass_length': 'int'}
 
     def __init__(self, *args, **kwargs):
