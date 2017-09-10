@@ -30,7 +30,7 @@ def getlogger(name='deploy-wintriallab-cloud-builder'):
     log = logging.getLogger(name)
     log.setLevel(logging.WARNING)
     conhandler = logging.StreamHandler()
-    conhandler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    conhandler.setFormatter(logging.Formatter('%(levelname)s: %(asctime)s: %(message)s'))
     log.addHandler(conhandler)
     return log
 
@@ -395,7 +395,7 @@ class WinTrialLabAzureWrapper:
 
         result = self.armclient.resource_groups.create_or_update(
             groupname, {'location': grouplocation})
-        log.info(f"Azure resource group: {result}")
+        log.info(f"Azure resource group: {result['id']}")
 
         deploy_params = {
             'mode': deploymode,
