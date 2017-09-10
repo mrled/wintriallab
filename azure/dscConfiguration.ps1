@@ -32,19 +32,19 @@ Configuration DSConfigure-LocalConfigurationManager {
     }
 }
 
-<#
-.description
-Debugging options for WinTrialBuilder
-These aren't going to be useful once everything is fully automated, but they're annoying the fuck out of me when I'm RDPing to the server all the time during debugging
-#>
-Configuration DSConfigure-WinTrialBuilderDebug {
+Configuration DSConfigure-WinTrialBuilder {
     param(
         [string[]] $computerName = $env:COMPUTERNAME
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
+    Import-DscResource -ModuleName xHyper-V
+    Import-DscResource -ModuleName cChoco
 
     Node $computerName {
+
+        ## Debugging settings
+        # Not useful once everything is fully automated, but they're annoying the fuck out of me when I'm RDPing to the server all the time during debugging
 
         # Fucking line endings and fucking Notepad make me want to kms
         Script "GetVsCode" {
@@ -107,19 +107,8 @@ Configuration DSConfigure-WinTrialBuilderDebug {
                 $evLnk.Save()
             }
         }
-    }
-}
 
-Configuration DSConfigure-WinTrialBuilder {
-    param(
-        [string[]] $computerName = $env:COMPUTERNAME
-    )
-
-    Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName xHyper-V
-    Import-DscResource -ModuleName cChoco
-
-    Node $computerName {
+        ## WinTrialLab settings
 
         WindowsFeature "Hyper-V" {
             Ensure = "Present"
