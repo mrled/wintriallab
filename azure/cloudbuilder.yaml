@@ -53,7 +53,7 @@ variables:
 
   deployExtName: "wtlDscExtension"
   deployExtInvocation: "[concat(
-    'powershell.exe -NoProfile -ExecutionPolicy Unrestricted -Command \"& { ',
+    'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -Command \"& { ',
       'Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'), ';',
       '& ', variables('wtlDeployInitPath'), ' -wtlRepoZipUri ', variables('wtlRepoZipUri'), ';',
     '}\"'
