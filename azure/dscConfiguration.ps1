@@ -33,6 +33,54 @@ Configuration DSConfigure-LocalConfigurationManager {
     }
 }
 
+<#
+.description
+Debugging options for WinTrialBuilder
+These aren't going to be useful once everything is fully automated, but they're annoying the fuck out of me when I'm RDPing to the server all the time during debugging
+#>
+Configuration DSConfigure-WinTrialBuilderDebug {
+    param(
+        [string[]] $computerName = $env:COMPUTERNAME
+    )
+    Node $computerName {
+        Script "SetNetworkCategoryPrivate" {
+            GetScript = {}
+            TestScript = {return $false}
+            SetScript {
+                enum NetworkType {
+                    Private = 1
+                    Public = 3
+                }
+                $networkListManagerGuid = [Guid]"{DCB00C01-570F-4A9B-8D69-199FDBA5723B}"
+                $networkListManager = [Activator]::CreateInstance([Type]::GetTypeFromCLSID($networkListManagerGuid))
+                foreach ($connection in $networkListManager.GetNetworkConnections()) {
+                    $network = $connection.GetNetwork()
+                    $oldNetworkTypeName = [System.Enum]::GetName([NetworkType], $network.GetCategory())
+                    Write-Output "Network called '$($network.GetName())' currently set to type '$oldNetworkTypeName'; forcing to Private..."
+                    $connection.GetNetwork().SetCategory([NetworkType]::Private)
+                }
+            }
+        }
+        Script "DoNotOpenServerManagerAtLogon" {
+            GetScript = {}
+            TestScript = {}
+            SetScript = {
+                New-ItemProperty -Path HKCU:\Software\Microsoft\ServerManager -Name DoNotOpenServerManagerAtLogon -PropertyType DWORD -Value "0x1" –Force
+            }
+        }
+        Script "PowershellDesktopShortcut" {
+            GetScript = {}
+            TestScript = {}
+            SetScript = {
+                $wScrShell = New-Object -ComObject WScript.Shell
+                $shortcut = $wScrShell.CreateShortcut("${env:Public}\Desktop\Powershell.lnk")
+                $shortcut.TargetPath = "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe"
+                $shortcut.Save()
+            }
+        }
+    }
+}
+
 Configuration DSConfigure-WinTrialBuilder {
     param(
         [string[]] $computerName = $env:COMPUTERNAME
