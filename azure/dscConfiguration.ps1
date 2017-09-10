@@ -94,7 +94,7 @@ Configuration DSConfigure-WinTrialBuilder {
                 $caryatidExe = Get-ChildItem -Recurse -File -Path $downloadDir -Include
                 Move-Item -Path $caryatidExe -Destination $caryatidInstallPath
             }
-            DependsOn = "[cChocoInstaller]ChocoInstallPacker"
+            DependsOn = "[cChocoPackageInstaller]ChocoInstallPacker"
         }
 
         # Script "RunPacker" {
