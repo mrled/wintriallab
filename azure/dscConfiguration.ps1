@@ -4,6 +4,7 @@ DSC configurations for WinTrialLab
 #>
 [CmdletBinding()] Param(
     [string] $chocoInstallDir = (Join-Path -Path ${env:ProgramData} -ChildPath "Chocolatey"),
+    [string] $vsCodeInstallDir = (Join-Path -Path $env:SystemDrive -ChildPath "VSCode"),
 
     [string] $caryatidInstallDir = (Join-Path -Path "${env:AppData}\packer.d" -ChildPath 'plugins'),
     [string] $caryatidPluginFilename = 'packer-post-processor-caryatid.exe',
@@ -12,13 +13,11 @@ DSC configurations for WinTrialLab
     [string] $caryatidAssetRegex = '^caryatid_windows_amd64_.*\.zip$'
 )
 
-function New-TemporaryDirectory {
-    $newTempDirPath = ""
-    do {
-        $newTempDirPath = Join-Path $env:TEMP (New-Guid | Select-Object -ExpandProperty Guid)
-    } while (Test-Path -Path $newTempDirPath)
-    New-Item -ItemType Directory -Path $newTempDirPath
-}
+<#
+General notes:
+- The debug configuration isn't going to be useful once everything is fully automated, but it's solving the most fucking annoying problems I'm having during debugging when I have to RDP to the server all the time
+- Script resources are weird. Unlike other resources, you cannot use external variables in them, so instead, we use {0} and the -f string format argument to pass in any external variables we require. This also means that we cannot use external functions, which would be harder to pass that way. See also https://stackoverflow.com/questions/23346901/powershell-dsc-how-to-pass-configuration-parameters-to-scriptresources#27848013
+#>
 
 [DSCLocalConfigurationManager()]
 Configuration DSConfigure-LocalConfigurationManager {
@@ -42,7 +41,27 @@ Configuration DSConfigure-WinTrialBuilderDebug {
     param(
         [string[]] $computerName = $env:COMPUTERNAME
     )
+
+    Import-DscResource -ModuleName PSDesiredStateConfiguration
+
     Node $computerName {
+
+        # Fucking line endings and fucking Notepad make me want to kms
+        Script "GetVsCode" {
+            GetScript = { return @{ Result = "" } }
+            TestScript = ({ Test-Path -Path "{0}\Code.exe" } -f @($vsCodeInstallDir))
+            SetScript = ({
+                $instDir = "{0}"
+                New-Item -Type Directory -Force -Path $instDir
+                $dlPath = "$instDir\vscode.zip"
+                Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?Linkid=850641 -OutFile $dlPath
+                Expand-Archive -Path $dlPath -DestinationPath $instDir
+
+                $path = [Environment]::GetEnvironmentVariable("Path", "Machine") + [System.IO.Path]::PathSeparator + $instDir
+                [Environment]::SetEnvironmentVariable("Path", $path, "Machine")
+            } -f @($vsCodeInstallDir))
+        }
+
         Script "SetNetworkCategoryPrivate" {
             GetScript = { return @{ Result = "" } }
             TestScript = { return $false }
@@ -61,14 +80,18 @@ Configuration DSConfigure-WinTrialBuilderDebug {
                 }
             }
         }
+
         Registry "DoNotOpenServerManagerAtLogon" {
             # New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\ServerManager -Name DoNotOpenServerManagerAtLogon -PropertyType DWORD -Value "0x1" –Force
             Ensure = "Present"
+            Force = $true
             Key = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ServerManager"
             ValueName = "DoNotOpenServerManagerAtLogon"
+            Hex = $true
             ValueData = "0x1"
             ValueType = "Dword"
         }
+
         Script "AddDesktopShortcuts" {
             GetScript = { return @{ Result = "" } }
             TestScript = { return $false }
@@ -119,8 +142,20 @@ Configuration DSConfigure-WinTrialBuilder {
         }
 
         cChocoInstaller "InstallChoco" {
-            # Also adds $env:ChocolateyInstall to $env:PATH
+            # It seems like this should add $chocoInstallDir\bin to PATH, but it doesn't appear to do so at the Machine level
             InstallDir = $chocoInstallDir
+        }
+        Script "AddChocoToSystemPath" {
+            GetScript = { return @{ Result = "" } }
+            TestScript = ({
+                $chocoInstallDir = "{0}"
+                [Environment]::GetEnvironmentVariable("Path", "Machin") -split ';' -contains "$chocoInstallDir\bin"
+            } -f @($chocoInstallDir))
+            SetScript = ({
+                $chocoInstallDir = "{0}"
+                $path = [Environment]::GetEnvironmentVariable("Path", "Machine") + [System.IO.Path]::PathSeparator + "$chocoInstallDir\bin"
+                [Environment]::SetEnvironmentVariable("Path", $path, "Machine")
+            } -f @($chocoInstallDir))
         }
         cChocoPackageInstaller "ChocoInstallPacker" {
             # Installed to $chocoInstallDir/bin as of 1.0.4
@@ -132,22 +167,41 @@ Configuration DSConfigure-WinTrialBuilder {
 
         Script "InstallCaryatidPackerPlugin" {
             GetScript = { return @{ Result = "" } }
-            TestScript = {
-                Test-Path -Path $caryatidInstallPath
-            }
-            SetScript = {
+            TestScript = ({
+                Test-Path -Path "{0}"
+            } -f @($caryatidInstallPath))
+            SetScript = ({
+                $caryatidInstallDir = [string]"{0}"
+                $caryatidPluginFilename = [string]"{1}"
+                $caryatidInstallPath = [string]"{2}"
+                $caryatidGitHubLatestReleaseEndpoint = [string]"{3}"
+                $caryatidAssetRegex = [string]'{4}' # Important to single-quote this?
+
+                Get-Date | Out-File C:\log.txt
+
                 $asset = Invoke-RestMethod -Uri $caryatidGitHubLatestReleaseEndpoint |
                     Select-Object -ExpandProperty assets |
                     Where-Object -Property "name" -match $caryatidAssetRegex
+                $asset | Out-File -Append C:\log.txt
                 $filename = $asset.browser_download_url -split '/' | Select-Object -Last 1
-                $downloadDir = New-TemporaryDirectory | Select-Object -ExpandProperty FullName
+                $filename  | Out-File -Append C:\log.txt
+
+                $downloadDir = Join-Path -Path $env:TEMP -ChildPath (New-Guid | Select-Object -ExpandProperty Guid)
+                $downloadDir | Out-File -Append C:\log.txt
+                New-Item -Type Directory -Force -Path $downloadDir | Out-File -Append C:\log.txt
+
                 $downloadPath = Join-Path -Path $downloadDir -ChildPath $filename
-                New-Item -Type Directory -Force -Path $caryatidInstallDir
+                $downloadPath | Out-File -Append C:\log.txt
+                New-Item -Type Directory -Force -Path $caryatidInstallDir | Out-File -Append C:\log.txt
                 Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath
+                "downloaded"  | Out-File -Append C:\log.txt
                 Expand-Archive -Path $downloadPath -DestinationPath $downloadDir
-                $caryatidExe = Get-ChildItem -Recurse -File -Path $downloadDir -Include
+                "expanded" | Out-File -Append C:\log.txt
+                $caryatidExe = Get-ChildItem -Recurse -File -Path $downloadDir -Include $caryatidPluginFilename
+                $caryatidExe | Out-File -Append C:\log.txt
                 Move-Item -Path $caryatidExe -Destination $caryatidInstallPath
-            }
+                "done" | Out-File -Append C:\log.txt
+            } -f @($caryatidInstallDir, $caryatidPluginFilename, $caryatidInstallPath, $caryatidGitHubLatestReleaseEndpoint, $caryatidAssetRegex))
             DependsOn = "[cChocoPackageInstaller]ChocoInstallPacker"
         }
 

@@ -131,7 +131,7 @@ DSConfigure-LocalConfigurationManager -OutputPath $lcmWorkDir | Write-EventLogWr
 Set-DscLocalConfigurationManager -Path $lcmWorkDir | Write-EventLogWrapper
 
 # Enable the debugging options
-$wtlDbgWorkDir = Join-Path $dscWorkDirBase "WinTrialLab"
+$wtlDbgWorkDir = Join-Path $dscWorkDirBase "WinTrialLabDebug"
 DSConfigure-WinTrialBuilderDebug -OutputPath $wtlDbgWorkDir | Write-EventLogWrapper
 Start-DscConfiguration -Path $wtlDbgWorkDir | Write-EventLogWrapper
 
