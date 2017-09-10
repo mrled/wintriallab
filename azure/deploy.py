@@ -360,11 +360,12 @@ class WinTrialLabAzureWrapper:
 
     def deletegroup(self, name):
         """Delete a resource group if it exists"""
+        log.info(f"Deleting resource group {name}")
         if self.testdeployed(name):
             self.armclient.resource_groups.delete(name).wait()
             log.info(f"Successfully deleted the {name} resource group")
         else:
-            log.info(f"The {name} resource group did not exist")
+            log.info(f"The {name} resource group could not be deleted because it did not exist")
 
     def deploytempl(
             self,
@@ -395,7 +396,7 @@ class WinTrialLabAzureWrapper:
 
         result = self.armclient.resource_groups.create_or_update(
             groupname, {'location': grouplocation})
-        log.info(f"Azure resource group: {result['id']}")
+        log.info(f"Created or updated resource group: {result.id}")
 
         deploy_params = {
             'mode': deploymode,
@@ -726,7 +727,8 @@ def main(*args, **kwargs):
         log.info(f"Deleted resource group '{config.resource_group_name}'")
 
     elif config.action == 'deploy' or config.action == 'validate':
-        log.info(f"Using builder VM password '{config.builder_vm_admin_password}'")
+        # Log this here in case the template doesn't deploy completely, but the VM is still up and we can connect to it for debugging
+        log.debug(f"Using builder VM password '{config.builder_vm_admin_password}'")
         outputs = wtlazwrapper.deploytempl(
             config.resource_group_name,
             config.resource_group_location,
