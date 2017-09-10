@@ -44,9 +44,9 @@ Configuration DSConfigure-WinTrialBuilderDebug {
     )
     Node $computerName {
         Script "SetNetworkCategoryPrivate" {
-            GetScript = {}
-            TestScript = {return $false}
-            SetScript {
+            GetScript = { return @{ Result = "" } }
+            TestScript = { return $false }
+            SetScript = {
                 enum NetworkType {
                     Private = 1
                     Public = 3
@@ -61,21 +61,27 @@ Configuration DSConfigure-WinTrialBuilderDebug {
                 }
             }
         }
-        Script "DoNotOpenServerManagerAtLogon" {
-            GetScript = {}
-            TestScript = {}
-            SetScript = {
-                New-ItemProperty -Path HKCU:\Software\Microsoft\ServerManager -Name DoNotOpenServerManagerAtLogon -PropertyType DWORD -Value "0x1" –Force
-            }
+        Registry "DoNotOpenServerManagerAtLogon" {
+            # New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\ServerManager -Name DoNotOpenServerManagerAtLogon -PropertyType DWORD -Value "0x1" –Force
+            Ensure = "Present"
+            Key = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ServerManager"
+            ValueName = "DoNotOpenServerManagerAtLogon"
+            ValueData = "0x1"
+            ValueType = "Dword"
         }
-        Script "PowershellDesktopShortcut" {
-            GetScript = {}
-            TestScript = {}
+        Script "AddDesktopShortcuts" {
+            GetScript = { return @{ Result = "" } }
+            TestScript = { return $false }
             SetScript = {
                 $wScrShell = New-Object -ComObject WScript.Shell
-                $shortcut = $wScrShell.CreateShortcut("${env:Public}\Desktop\Powershell.lnk")
-                $shortcut.TargetPath = "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe"
-                $shortcut.Save()
+
+                $psLnk = $wScrShell.CreateShortcut("${env:Public}\Desktop\Powershell.lnk")
+                $psLnk.TargetPath = "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe"
+                $psLnk.Save()
+
+                $evLnk = $wScrShell.CreateShortcut("${env:Public}\Desktop\eventvwr.lnk")
+                $evLnk.TargetPath = "${env:SystemRoot}\System32\eventvwr.exe"
+                $evLnk.Save()
             }
         }
     }
@@ -125,7 +131,7 @@ Configuration DSConfigure-WinTrialBuilder {
         }
 
         Script "InstallCaryatidPackerPlugin" {
-            GetScript = {}
+            GetScript = { return @{ Result = "" } }
             TestScript = {
                 Test-Path -Path $caryatidInstallPath
             }
