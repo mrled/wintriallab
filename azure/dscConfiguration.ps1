@@ -40,6 +40,7 @@ Configuration DSConfigure-WinTrialBuilder {
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DscResource -ModuleName xHyper-V
+    Import-DscResource -ModuleName cChoco
 
     Node $computerName {
 
