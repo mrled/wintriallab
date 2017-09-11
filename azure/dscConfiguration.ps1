@@ -46,22 +46,6 @@ Configuration DSConfigure-WinTrialBuilder {
         ## Debugging settings
         # Not useful once everything is fully automated, but they're annoying the fuck out of me when I'm RDPing to the server all the time during debugging
 
-        # Fucking line endings and fucking Notepad make me want to kms
-        Script "GetVsCode" {
-            GetScript = { return @{ Result = "" } }
-            TestScript = ({ Test-Path -Path "{0}\Code.exe" } -f @($vsCodeInstallDir))
-            SetScript = ({
-                $instDir = "{0}"
-                New-Item -Type Directory -Force -Path $instDir
-                $dlPath = "$instDir\vscode.zip"
-                Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?Linkid=850641 -OutFile $dlPath
-                Expand-Archive -Path $dlPath -DestinationPath $instDir
-
-                $path = [Environment]::GetEnvironmentVariable("Path", "Machine") + [System.IO.Path]::PathSeparator + $instDir
-                [Environment]::SetEnvironmentVariable("Path", $path, "Machine")
-            } -f @($vsCodeInstallDir))
-        }
-
         Script "SetNetworkCategoryPrivate" {
             GetScript = { return @{ Result = "" } }
             TestScript = { return $false }
@@ -152,6 +136,19 @@ Configuration DSConfigure-WinTrialBuilder {
             Name      = 'packer'
             Ensure    = 'Present'
             DependsOn = '[cChocoInstaller]InstallChoco'
+        }
+
+        # For debugging
+        # Fucking line endings and fucking Notepad make me want to kms
+        cChocoPackageInstaller "ChocoInstallVsCode" {
+            Name = 'VisualStudioCode'
+            Ensure = 'Present'
+            DependsOn = '[cChocoInstaller]InstallChoco'
+        }
+        cChocoPackageInstaller "ChocoInstallVsCodePowershellSyntax" {
+            Name = 'vscode-powershell'
+            Ensure = 'Present'
+            DependsOn = '[cChocoPackageInstaller]ChocoInstallVsCode'
         }
 
         Script "InstallCaryatidPackerPlugin" {
