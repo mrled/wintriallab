@@ -40,6 +40,7 @@ Configuration DSConfigure-WinTrialBuilder {
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DscResource -ModuleName xHyper-V
     Import-DscResource -ModuleName cChoco
+    Import-DscResource -ModuleName cWtlShortcut
 
     Node $computerName {
 
@@ -76,20 +77,15 @@ Configuration DSConfigure-WinTrialBuilder {
             ValueType = "Dword"
         }
 
-        Script "AddDesktopShortcuts" {
-            GetScript = { return @{ Result = "" } }
-            TestScript = { return $false }
-            SetScript = {
-                $wScrShell = New-Object -ComObject WScript.Shell
-
-                $psLnk = $wScrShell.CreateShortcut("${env:Public}\Desktop\Powershell.lnk")
-                $psLnk.TargetPath = "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe"
-                $psLnk.Save()
-
-                $evLnk = $wScrShell.CreateShortcut("${env:Public}\Desktop\eventvwr.lnk")
-                $evLnk.TargetPath = "${env:SystemRoot}\System32\eventvwr.exe"
-                $evLnk.Save()
-            }
+        cWtlShortcut "AddPowershellDesktopShortcut" {
+            Ensure = "Present"
+            ShortcutPath = "${env:Public}\Desktop\Powershell.lnk"
+            TargetPath = "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe"
+        }
+        cWtlShortcut "AddEventvwrDesktopShortcut" {
+            Ensure = "Present"
+            ShortcutPath = "${env:Public}\Desktop\eventvwr.lnk"
+            TargetPath = "${env:SystemRoot}\System32\eventvwr.exe"
         }
 
         ## WinTrialLab settings

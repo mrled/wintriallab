@@ -117,6 +117,12 @@ Expand-Archive -Path $wtlZipFile -DestinationPath $wtlExtractDir
 $wtlDir = Get-ChildItem -Path $wtlExtractDir | Select-Object -First 1 -ExpandProperty FullName
 Write-EventLogWrapper "wintriallab files and directories:`r`nwtlDlDir = '$wtlDlDir'`r`nwtlExtractDir = '$wtlExtractDir'`r`nwtlZipFile = '$wtlZipFile'`r`nwtlDir = '$wtlDir'`r`n"
 
+# Ensure Powershell can find our DSC resources
+$wtlDscResourceDir = Get-Item -Path $wtlDir\azure\DscResources | Select-Object -ExpandProperty FullName
+if (($env:PSModulePath -split ';') -NotContains $wtlDscResourceDir) {
+    $env:PSModulePath += ";$wtlDscResourceDir"
+}
+
 # Get the DSC configuration
 Write-EventLogWrapper "Invoking DSC configuration..."
 . "$wtlDir\azure\dscConfiguration.ps1"
