@@ -9,23 +9,17 @@ enum InstallLocation {
 }
 
 [DscResource()] class cWtlCaryatidInstaller {
-    # Apparently we need a Key property.
-    # Use this to indicate the version we installed
-    # Set to a fully qualified path
+    # The version to install
+    # "latest" will get the latest release
     [DscProperty(Key)]
     [string]
-    $DownloadCacheDirectory
+    $ReleaseVersion
 
     # Location of the Packer plugins directory
     # Note that "User" probably won't be very useful unless we handle installing using a PSCredential
     [DscProperty()]
     [InstallLocation]
     $InstallLocation = [InstallLocation]::Machine
-
-    # The version to install
-    [DscProperty()]
-    [string]
-    $ReleaseVersion
 
     [DscProperty(Mandatory)]
     [Ensure] $Ensure
@@ -40,16 +34,25 @@ enum InstallLocation {
     [string] $endpointBase = 'https://api.github.com/repos/mrled/caryatid/releases'
     [string] $assetRegex = '^caryatid_windows_amd64_.*\.zip$'  # Must be single quoted~
     [string] $assetFilename
+    [string] $_workDir
     [object] $_asset
 
     [object] get_asset() {
+        $endpoint = "$($this.endpointBase)/$($this.ReleaseVersion)"
         if (-not $this._asset) {
-            $this._asset = Invoke-RestMethod -Uri $this.endpoint |
+            $this._asset = Invoke-RestMethod -Uri $endpoint |
                 Select-Object -ExpandProperty assets |
-                Where-Object -Property "name" -match $this.caryatidAssetRegex
+                Where-Object -Property "name" -match $this.assetRegex
             Write-Verbose -Message $this._asset
         }
         return $this._asset
+    }
+
+    [string] get_workDir() {
+        if (-not ($this._workDir)) {
+            $this._workDir = $this.NewTempDir()
+        }
+        return $this._workDir
     }
 
     [string] get_assetFilename() {
@@ -57,34 +60,19 @@ enum InstallLocation {
     }
 
     [string] get_installPath() {
-        return (Join-Path -Path $this.PackerPluginsDir -ChildPath $this.caryatidPluginFilename)
-    }
-
-    [string] get_endpoint() {
-        return "$($this.endpointBase)/$($this.ReleaseVersion)"
-    }
-
-    [string] get_downloadCacheLocation() {
-        if (-not (Test-Path $this.assetFilename)) {
-            throw "assetFileName not set"
-        }
-        return Join-Path -Path $this.DownloadCacheDirectory -ChildPath $this.assetFileName
+        return (Join-Path -Path $this.installDirectory -ChildPath $this.caryatidPluginFilename)
     }
 
     [string] get_installDirectory() {
         switch ($this.InstallLocation) {
             [InstallLocation]::Machine {
-                return "${env:ProgramFiles}\Packer"
+                return Join-Path -Path $env:ProgramFiles -ChildPath "Packer"
             }
             [InstallLocation]::User {
                 return Join-Path -Path $env:AppData -ChildPath (Join-Path -Path "packer.d" -ChildPath 'plugins')
             }
         }
         throw "Unknown install location: $($this.InstallLocation)"
-    }
-
-    [string] get_installPath() {
-        return (Join-Path -Path $this.installDirectory -ChildPath $this.assetFilename)
     }
 
     # Required methods:
@@ -95,31 +83,33 @@ enum InstallLocation {
             Write-Verbose -Message "Downloading release and installing to $($this.installPath)"
 
             New-Item -Type Directory -Force -Path $this.installDirectory | Out-Null
+            $workDir = $this.NewTempDir() | Select-Object -ExpandProperty FullName
+            $dlPath = Join-Path -Path $this.workDir -ChildPath $this.assetFileName
 
-            Invoke-WebRequest -Uri $this.asset.browser_download_url -OutFile $this.DownloadCacheDirectory
-            Write-Verbose -Message "Downloaded asset to $($this.downloadCacheLocation)"
+            try {
+                Invoke-WebRequest -Uri $this.asset.browser_download_url -OutFile $workDir
+                Write-Verbose -Message "Downloaded asset to $dlPath"
 
-            $extractDir = $this.NewTemporaryDirectory()
-            Expand-Archive -Path $this.DownloadCacheLocation -DestinationPath $extractDir
-            Write-Verbose -Message "Extracted asset to $extractDir"
+                Expand-Archive -Path $this.dlPath -DestinationPath $workDir
+                Write-Verbose -Message "Extracted asset to $workDir"
 
-            $caryatidExe = Get-ChildItem -Recurse -File -Path $extractDir -Include $this.caryatidPluginFilename | Select-Object -ExpandProperty FullName
-            Write-Verbose -Message "Found extracted file at $caryatidExe"
-            
-            Move-Item -Path $caryatidExe -Destination $this.installPath
-            Write-Verbose -Message "Moved extracted file to $($this.installPath)"
+                $caryatidExe = Get-ChildItem -Recurse -File -Path $workDir -Include $this.caryatidPluginFilename | Select-Object -ExpandProperty FullName
+                Write-Verbose -Message "Found extracted file at $caryatidExe"
+                
+                Move-Item -Path $caryatidExe -Destination $this.installPath
+                Write-Verbose -Message "Moved extracted file to $($this.installPath)"
+            } finally {
+                Write-Verbose -Message "Encountered an error, deleting $workDir"
+                Remove-Item -Force $workDir
+            }
 
         } elseif ($this.Ensure -eq [Ensure]::Absent) {
             Write-Verbose -Message "Removing release and cache"
             Remove-Item -LiteralPath $this.installPath -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $this.downloadCacheLocatione -Force -ErrorAction SilentlyContinue
         }
     }
 
     [bool] Test() {
-        if (-not (Test-Path -Path $this.downloadCacheLocation) {
-            return $false
-        }
         if (-not (Test-Path -Path $this.installPath)) {
             return $false
         }
@@ -133,7 +123,7 @@ enum InstallLocation {
 
     # Helper methods
 
-    [System.IO.FileSystemInfo] NewTemporaryDirectory() {
+    [System.IO.FileSystemInfo] NewTempDir() {
         $newTempDirPath = ""
         do {
             $newTempDirPath = Join-Path $env:TEMP (New-Guid | Select-Object -ExpandProperty Guid)
