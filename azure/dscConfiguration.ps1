@@ -19,6 +19,11 @@ General notes:
 - Script resources are weird. Unlike other resources, you cannot use external variables in them, so instead, we use {0} and the -f string format argument to pass in any external variables we require. This also means that we cannot use external functions, which would be harder to pass that way. See also https://stackoverflow.com/questions/23346901/powershell-dsc-how-to-pass-configuration-parameters-to-scriptresources#27848013
 #>
 
+<#
+.parameter computerName
+This probably has to be "localhost".
+The reason for this it that any other value - for instance, '$env:COMPUTERNAME' - triggers behavior that attempts to run the configuration over WinRM. This won't see the custom $env:PSModulePath we may have set in deployInit.ps1, and may have Execution Policy issues as well.
+#>
 [DSCLocalConfigurationManager()]
 Configuration DSConfigure-LocalConfigurationManager {
     param(
@@ -40,7 +45,7 @@ Configuration DSConfigure-WinTrialBuilder {
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DscResource -ModuleName xHyper-V
     Import-DscResource -ModuleName cChoco
-    Import-DscResource -ModuleName cWtlShortcut
+    Import-DscResource -ModuleName cWinTrialLab
 
     Node $computerName {
 

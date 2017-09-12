@@ -25,11 +25,11 @@ Manage shortcuts
 
     # Optional arguments to pass to the executable at $TargetPath
     [DscProperty()]
-    [Nullable[string]] $TargetArguments = ""
+    [string] $TargetArguments = ""
 
     # The WindowStyle for the shortcut
     [DscProperty()]
-    [Nullable[WindowStyle]] $WindowStyle = [WindowStyle]::Activate
+    [WindowStyle] $WindowStyle = [WindowStyle]::Activate
 
     [DscProperty(Mandatory)]
     [Ensure] $Ensure
