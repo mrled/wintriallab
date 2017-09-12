@@ -152,44 +152,9 @@ Configuration DSConfigure-WinTrialBuilder {
             DependsOn = '[cChocoPackageInstaller]ChocoInstallVsCode'
         }
 
-        Script "InstallCaryatidPackerPlugin" {
-            GetScript = { return @{ Result = "" } }
-            TestScript = ({
-                Test-Path -Path "{0}"
-            } -f @($caryatidInstallPath))
-            SetScript = ({
-                $caryatidInstallDir = [string]"{0}"
-                $caryatidPluginFilename = [string]"{1}"
-                $caryatidInstallPath = [string]"{2}"
-                $caryatidGitHubLatestReleaseEndpoint = [string]"{3}"
-                $caryatidAssetRegex = [string]'{4}' # Important to single-quote this?
-
-                Get-Date | Out-File C:\log.txt
-
-                $asset = Invoke-RestMethod -Uri $caryatidGitHubLatestReleaseEndpoint |
-                    Select-Object -ExpandProperty assets |
-                    Where-Object -Property "name" -match $caryatidAssetRegex
-                $asset | Out-File -Append C:\log.txt
-                $filename = $asset.browser_download_url -split '/' | Select-Object -Last 1
-                $filename  | Out-File -Append C:\log.txt
-
-                $downloadDir = Join-Path -Path $env:TEMP -ChildPath (New-Guid | Select-Object -ExpandProperty Guid)
-                $downloadDir | Out-File -Append C:\log.txt
-                New-Item -Type Directory -Force -Path $downloadDir | Out-File -Append C:\log.txt
-
-                $downloadPath = Join-Path -Path $downloadDir -ChildPath $filename
-                $downloadPath | Out-File -Append C:\log.txt
-                New-Item -Type Directory -Force -Path $caryatidInstallDir | Out-File -Append C:\log.txt
-                Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath
-                "downloaded"  | Out-File -Append C:\log.txt
-                Expand-Archive -Path $downloadPath -DestinationPath $downloadDir
-                "expanded" | Out-File -Append C:\log.txt
-                $caryatidExe = Get-ChildItem -Recurse -File -Path $downloadDir -Include $caryatidPluginFilename
-                $caryatidExe | Out-File -Append C:\log.txt
-                Move-Item -Path $caryatidExe -Destination $caryatidInstallPath
-                "done" | Out-File -Append C:\log.txt
-            } -f @($caryatidInstallDir, $caryatidPluginFilename, $caryatidInstallPath, $caryatidGitHubLatestReleaseEndpoint, $caryatidAssetRegex))
-            DependsOn = "[cChocoPackageInstaller]ChocoInstallPacker"
+        cWtlCaryatidInstaller "InstallCaryatidPackerPlugin" {
+            Ensure = "Present"
+            ReleaseVersion = "latest"
         }
 
         # Script "RunPacker" {
