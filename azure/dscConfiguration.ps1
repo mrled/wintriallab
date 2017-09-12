@@ -5,12 +5,7 @@ DSC configurations for WinTrialLab
 [CmdletBinding()] Param(
     [string] $chocoInstallDir = (Join-Path -Path ${env:ProgramData} -ChildPath "Chocolatey"),
     [string] $vsCodeInstallDir = (Join-Path -Path $env:SystemDrive -ChildPath "VSCode"),
-
-    [string] $caryatidInstallDir = (Join-Path -Path "${env:AppData}\packer.d" -ChildPath 'plugins'),
-    [string] $caryatidPluginFilename = 'packer-post-processor-caryatid.exe',
-    [string] $caryatidInstallPath = (Join-Path -Path $caryatidInstallDir -ChildPath $caryatidPluginFilename),
-    [string] $caryatidGitHubLatestReleaseEndpoint = 'https://api.github.com/repos/mrled/caryatid/releases/latest',
-    [string] $caryatidAssetRegex = '^caryatid_windows_amd64_.*\.zip$'
+    [string] $caryatidReleaseVersion = "latest"
 )
 
 <#
@@ -154,7 +149,7 @@ Configuration DSConfigure-WinTrialBuilder {
 
         cWtlCaryatidInstaller "InstallCaryatidPackerPlugin" {
             Ensure = "Present"
-            ReleaseVersion = "latest"
+            ReleaseVersion = $caryatidReleaseVersion
         }
 
         # Script "RunPacker" {
