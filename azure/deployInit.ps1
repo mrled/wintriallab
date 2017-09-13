@@ -14,7 +14,7 @@ Arbitrary string to use as a name to use for the "source" of the event log entri
 Install tools that are helpful for troubleshooting and debugging my DSC configuration on the VM.
 .parameter runLocal
 If *not* passed, assume that this script has been downloaded alone; download the WTL zip file and extract it before using resources found in it to continue.
-If passed, assume that this script is running in a checked-out copy WTL repo, and use $PSScriptRoot to find other resources
+If passed, assume that this script is running in a checked-out copy WTL repo, and use $PSScriptRoot to find other resources. Also, run DSC configurations with -Force (rationale: we are probably trying things, having them fail, and trying again; without -Force, DSC will not attempt a new configuration after a failure.
 #>
 [CmdletBinding(DefaultParameterSetName="InitializeVm")] Param(
     [Parameter(ParameterSetName="InitializeVm", Mandatory)] [string] $wtlRepoZipUri,
@@ -150,10 +150,12 @@ Set-DscLocalConfigurationManager -Path $lcmWorkDir | Write-EventLogWrapper
 if ($installDebuggingTools) {
     $wtlDbgWorkDir = Join-Path -Path $dscWorkDirBase -ChildPath "WtlDbgConfig"
     WtlDbgConfig -OutputPath $wtlDbgWorkDir | Write-EventLogWrapper
-    Start-DscConfiguration -Path $wtlDbgWorkDir -Wait | Write-EventLogWrapper
+    # DSC will throw an error if you try to Start-DscConfiguration while another is running
+    # Therefore, run with -Wait here so the next configuration can continue
+    Start-DscConfiguration -Path $wtlDbgWorkDir -Wait -Force:$runLocal | Write-EventLogWrapper
 }
 
 # Now run the WinTrialLab DSC configuration
 $wtlWorkDir = Join-Path -Path $dscWorkDirBase -ChildPath "WtlConfig"
 WtlConfig -OutputPath $wtlWorkDir | Write-EventLogWrapper
-Start-DscConfiguration -Path $wtlWorkDir | Write-EventLogWrapper
+Start-DscConfiguration -Path $wtlWorkDir -Force:$runLocal | Write-EventLogWrapper
