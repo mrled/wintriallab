@@ -3,38 +3,26 @@ enum Ensure {
     Present
 }
 
-enum InstallLocation {
-    User
-    Machine
-}
+# FIXME: This doesn't ensure that the version requested is actually installed, just that some file exists in the install location
 
-[DscResource()] class cWtlCaryatidInstaller {
+# Require a credential because we install to $env:AppData, but DSC configurations are run by SYSTEM
+[DscResource(RunAsCredential="Required")]
+class cWtlCaryatidInstaller {
+
     # The version to install
     # "latest" will get the latest release
     [DscProperty(Key)]
     [string]
     $ReleaseVersion
 
-    # Location of the Packer plugins directory
-    # Note that "User" probably won't be very useful unless we handle installing using a PSCredential
-    [DscProperty()]
-    [InstallLocation]
-    $InstallLocation = [InstallLocation]::Machine
-
     [DscProperty(Mandatory)]
     [Ensure] $Ensure
-
-    [DscProperty(NotConfigurable)]
-    [Nullable[datetime]]
-    $CreationTime
 
     # Instance properties:
 
     [string] $caryatidPluginFilename = 'packer-post-processor-caryatid.exe'
     [string] $endpointBase = 'https://api.github.com/repos/mrled/caryatid/releases'
     [string] $assetRegex = '^caryatid_windows_amd64_.*\.zip$'  # Must be single quoted~
-    [string] $assetFilename
-    [string] $_workDir
     [object] $_asset
 
     [object] asset() {
@@ -48,46 +36,26 @@ enum InstallLocation {
         return $this._asset
     }
 
-    [string] workDir() {
-        if (-not ($this._workDir)) {
-            $this._workDir = $this.NewTempDir()
-        }
-        return $this._workDir
-    }
-
     [string] assetFilename() {
         return $this.asset().browser_download_url -split '/' | Select-Object -Last 1
     }
 
     [string] installPath() {
-        return (Join-Path -Path $this.installDirectory() -ChildPath $this.caryatidPluginFilename)
-    }
-
-    [string] installDirectory() {
-        switch ($this.InstallLocation) {
-            [InstallLocation]::Machine {
-                return Join-Path -Path $env:ProgramFiles -ChildPath "Packer"
-            }
-            [InstallLocation]::User {
-                return Join-Path -Path $env:AppData -ChildPath (Join-Path -Path "packer.d" -ChildPath 'plugins')
-            }
-        }
-        throw "Unknown install location: $($this.InstallLocation)"
+        return Join-Path -Path $env:AppData -ChildPath "packer.d" | Join-Path -ChildPath "plugins" | Join-Path -ChildPath $this.caryatidPluginFilename
     }
 
     # Required methods:
 
     [void] Set() {
-        $this.ValidateProperties()
         if ($this.Ensure -eq [Ensure]::Present -and -not $this.Test()) {
             Write-Verbose -Message "Downloading release and installing to $($this.installPath())"
 
-            New-Item -Type Directory -Force -Path $this.installDirectory() | Out-Null
+            New-Item -Type Directory -Force -Path (Split-Path -Parent $this.installPath()) | Out-Null
             $workDir = $this.NewTempDir() | Select-Object -ExpandProperty FullName
-            $dlPath = Join-Path -Path $this.workDir() -ChildPath $this.assetFileName()
+            $dlPath = Join-Path -Path $workDir -ChildPath $this.assetFilename()
 
             try {
-                Invoke-WebRequest -Uri $this.asset().browser_download_url -OutFile $workDir
+                Invoke-WebRequest -Uri $this.asset().browser_download_url -OutFile $dlPath
                 Write-Verbose -Message "Downloaded asset to $dlPath"
 
                 Expand-Archive -Path $dlPath -DestinationPath $workDir
@@ -110,10 +78,7 @@ enum InstallLocation {
     }
 
     [bool] Test() {
-        if (-not (Test-Path -Path $this.installPath())) {
-            return $false
-        }
-        return $true
+        return Test-Path -Path $this.installPath()
     }
 
     [cWtlCaryatidInstaller] Get() {
