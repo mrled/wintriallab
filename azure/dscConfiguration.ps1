@@ -20,7 +20,7 @@ This probably has to be "localhost".
 The reason for this it that any other value - for instance, '$env:COMPUTERNAME' - triggers behavior that attempts to run the configuration over WinRM. This won't see the custom $env:PSModulePath we may have set in deployInit.ps1, and may have Execution Policy issues as well.
 #>
 [DSCLocalConfigurationManager()]
-Configuration DSConfigure-LocalConfigurationManager {
+Configuration WtlLcmConfig {
     param(
         [string[]] $computerName = "localhost"
     )
@@ -32,20 +32,50 @@ Configuration DSConfigure-LocalConfigurationManager {
     }
 }
 
-Configuration DSConfigure-WinTrialBuilder {
+<#
+Enable debugging crap.
+Not useful once everything is fully automated, but they're annoying the fuck out of me when I'm RDPing to the server all the time during debugging.
+Note that this *should not* do anything that requires a restart, since we call it with `Start-DscConfiguration -Wait`
+#>
+Configuration WtlDbgConfig {
     param(
         [string[]] $computerName = $env:COMPUTERNAME
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
-    Import-DscResource -ModuleName xHyper-V
     Import-DscResource -ModuleName cChoco
-    Import-DscResource -ModuleName cWinTrialLab
 
     Node $computerName {
 
-        ## Debugging settings
-        # Not useful once everything is fully automated, but they're annoying the fuck out of me when I'm RDPing to the server all the time during debugging
+        cChocoInstaller "InstallChoco" {
+            # It seems like this should add $chocoInstallDir\bin to PATH, but it doesn't appear to do so at the Machine level
+            InstallDir = $chocoInstallDir
+        }
+        Script "AddChocoToSystemPath" {
+            GetScript = { return @{ Result = "" } }
+            TestScript = ({
+                $chocoInstallDir = "{0}"
+                [Environment]::GetEnvironmentVariable("Path", "Machine") -split ';' -contains "$chocoInstallDir\bin"
+            } -f @($chocoInstallDir))
+            SetScript = ({
+                $chocoInstallDir = "{0}"
+                $path = [Environment]::GetEnvironmentVariable("Path", "Machine") + [System.IO.Path]::PathSeparator + "$chocoInstallDir\bin"
+                [Environment]::SetEnvironmentVariable("Path", $path, "Machine")
+            } -f @($chocoInstallDir))
+        }
+
+        # Fucking line endings and fucking Notepad make me want to kms
+        cChocoPackageInstaller "ChocoInstallVsCode" {
+            Name = 'VisualStudioCode'
+            Ensure = 'Present'
+            DependsOn = '[cChocoInstaller]InstallChoco'
+        }
+        cChocoPackageInstaller "ChocoInstallVsCodePowershellSyntax" {
+            Name = 'vscode-powershell'
+            Ensure = 'Present'
+            DependsOn = '[cChocoPackageInstaller]ChocoInstallVsCode'
+        }
+
 
         Script "SetNetworkCategoryPrivate" {
             GetScript = { return @{ Result = "" } }
@@ -87,6 +117,22 @@ Configuration DSConfigure-WinTrialBuilder {
             ShortcutPath = "${env:Public}\Desktop\eventvwr.lnk"
             TargetPath = "${env:SystemRoot}\System32\eventvwr.exe"
         }
+
+    }
+}
+
+Configuration WtlConfig {
+    param(
+        [string[]] $computerName = $env:COMPUTERNAME
+    )
+
+    Import-DscResource -ModuleName PSDesiredStateConfiguration
+    Import-DscResource -ModuleName xHyper-V
+    Import-DscResource -ModuleName cChoco
+    Import-DscResource -ModuleName cWtlShortcut
+    Import-DscResource -ModuleName cWtlCaryatidInstaller
+
+    Node $computerName {
 
         ## WinTrialLab settings
 
@@ -132,19 +178,6 @@ Configuration DSConfigure-WinTrialBuilder {
             Name      = 'packer'
             Ensure    = 'Present'
             DependsOn = '[cChocoInstaller]InstallChoco'
-        }
-
-        # For debugging
-        # Fucking line endings and fucking Notepad make me want to kms
-        cChocoPackageInstaller "ChocoInstallVsCode" {
-            Name = 'VisualStudioCode'
-            Ensure = 'Present'
-            DependsOn = '[cChocoInstaller]InstallChoco'
-        }
-        cChocoPackageInstaller "ChocoInstallVsCodePowershellSyntax" {
-            Name = 'vscode-powershell'
-            Ensure = 'Present'
-            DependsOn = '[cChocoPackageInstaller]ChocoInstallVsCode'
         }
 
         cWtlCaryatidInstaller "InstallCaryatidPackerPlugin" {

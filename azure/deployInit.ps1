@@ -10,11 +10,18 @@ Note that we rely on GitHub's behavior of creating a zipfile with a single direc
 The name of the event log to use during initial setup. Created if nonexistent. Note that DSC logs are sent to the normal event log, not the one named here.
 .parameter eventLogSource
 Arbitrary string to use as a name to use for the "source" of the event log entries we create.
+.parameter installDebuggingTools
+Install tools that are helpful for troubleshooting and debugging my DSC configuration on the VM.
+.parameter runLocal
+If *not* passed, assume that this script has been downloaded alone; download the WTL zip file and extract it before using resources found in it to continue.
+If passed, assume that this script is running in a checked-out copy WTL repo, and use $PSScriptRoot to find other resources
 #>
-[CmdletBinding()] Param(
-    [Parameter(Mandatory)] [string] $wtlRepoZipUri,
+[CmdletBinding(DefaultParameterSetName="InitializeVm")] Param(
+    [Parameter(ParameterSetName="InitializeVm", Mandatory)] [string] $wtlRepoZipUri,
     [string] $eventLogName = "WinTrialLab",
-    [string] $eventLogSource = "WinTrialLab-azure-deployInit.ps1"
+    [string] $eventLogSource = "WinTrialLab-azure-deployInit.ps1",
+    [switch] $installDebuggingTools,
+    [Parameter(ParameterSetName="RunLocal", Mandatory)] [switch] $runLocal
 )
 
 <#
@@ -109,34 +116,44 @@ Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
 Install-Module -Name xHyper-V, cChoco
 
 # Download the wintriallab repo
-$wtlDlDir = New-TemporaryDirectory
-$wtlExtractDir = New-TemporaryDirectory
-$wtlZipFile = Join-Path -Path $wtlDlDir -ChildPath "wtl.zip"
-Invoke-WebRequest -Uri $wtlRepoZipUri -OutFile $wtlZipFile
-Expand-Archive -Path $wtlZipFile -DestinationPath $wtlExtractDir
-$wtlDir = Get-ChildItem -Path $wtlExtractDir | Select-Object -First 1 -ExpandProperty FullName
-Write-EventLogWrapper "wintriallab files and directories:`r`nwtlDlDir = '$wtlDlDir'`r`nwtlExtractDir = '$wtlExtractDir'`r`nwtlZipFile = '$wtlZipFile'`r`nwtlDir = '$wtlDir'`r`n"
-
-# Ensure Powershell can find our DSC resources
-$wtlDscResourceDir = Get-Item -Path $wtlDir\azure\DscResources | Select-Object -ExpandProperty FullName
-if (($env:PSModulePath -split ';') -NotContains $wtlDscResourceDir) {
-    $env:PSModulePath += ";$wtlDscResourceDir"
+if ($PsCmdlet.ParameterSetName -match "InitializeVm") {
+    $wtlDlDir = New-TemporaryDirectory
+    $wtlExtractDir = New-TemporaryDirectory
+    $wtlZipFile = Join-Path -Path $wtlDlDir -ChildPath "wtl.zip"
+    Invoke-WebRequest -Uri $wtlRepoZipUri -OutFile $wtlZipFile
+    Expand-Archive -Path $wtlZipFile -DestinationPath $wtlExtractDir
+    $wtlDir = Get-ChildItem -Path $wtlExtractDir | Select-Object -First 1 -ExpandProperty FullName
+    Write-EventLogWrapper "wintriallab files and directories:`r`nwtlDlDir = '$wtlDlDir'`r`nwtlExtractDir = '$wtlExtractDir'`r`nwtlZipFile = '$wtlZipFile'`r`nwtlDir = '$wtlDir'`r`n"
+} else {
+    $wtlDir = Resolve-Path -Path $PSScriptRoot\..
 }
 
-# Get the DSC configuration
+# Ensure Powershell can find our DSC resources
+# Note that DSC configurations are applied under the SYSTEM user, so we cannot just set our own copy of $env:PSModulePath and expect it to pick that up
+$machinePsModPath = "$env:ProgramFiles\WindowsPowerShell\Modules"
+Copy-Item -Recurse -Force -Path $wtlDir\azure\DscModules\* -Destination $machinePsModPath
+
+# Initialize the DSC configuration
 Write-EventLogWrapper "Invoking DSC configuration..."
 . "$wtlDir\azure\dscConfiguration.ps1"
-
-# Initialize DSC configuration
-$dscWorkDirBase = New-TemporaryDirectory | Select-Object -ExpandProperty FullName
+$dscWorkDirBase = New-Item -Type Directory -Path "$wtlDir\azure\DscConfigs" -Force | Select-Object -ExpandProperty FullName
 Write-EventLogWrapper -message "Using '$dscWorkDirBase' for DSC configurations"
+if (Test-Path $dscWorkDirBase) {
+    Remove-Item -Force -Recurse -Path $dscWorkDirBase
+}
 
 # Configure the Local Configuration Manager first
-$lcmWorkDir = Join-Path $dscWorkDirBase "LocalConfigurationManager"
-DSConfigure-LocalConfigurationManager -OutputPath $lcmWorkDir | Write-EventLogWrapper
+$lcmWorkDir = Join-Path -Path $dscWorkDirBase -ChildPath "WtlLcmConfig"
+WtlLcmConfig -OutputPath $lcmWorkDir | Write-EventLogWrapper
 Set-DscLocalConfigurationManager -Path $lcmWorkDir | Write-EventLogWrapper
 
+if ($installDebuggingTools) {
+    $wtlDbgWorkDir = Join-Path -Path $dscWorkDirBase -ChildPath "WtlDbgConfig"
+    WtlDbgConfig -OutputPath $wtlDbgWorkDir | Write-EventLogWrapper
+    Start-DscConfiguration -Path $wtlDbgWorkDir -Wait | Write-EventLogWrapper
+}
+
 # Now run the WinTrialLab DSC configuration
-$wtlWorkDir = Join-Path $dscWorkDirBase "WinTrialLab"
-DSConfigure-WinTrialBuilder -OutputPath $wtlWorkDir | Write-EventLogWrapper
+$wtlWorkDir = Join-Path -Path $dscWorkDirBase -ChildPath "WtlConfig"
+WtlConfig -OutputPath $wtlWorkDir | Write-EventLogWrapper
 Start-DscConfiguration -Path $wtlWorkDir | Write-EventLogWrapper

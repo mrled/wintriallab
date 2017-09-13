@@ -37,7 +37,7 @@ enum InstallLocation {
     [string] $_workDir
     [object] $_asset
 
-    [object] get_asset() {
+    [object] asset() {
         $endpoint = "$($this.endpointBase)/$($this.ReleaseVersion)"
         if (-not $this._asset) {
             $this._asset = Invoke-RestMethod -Uri $endpoint |
@@ -48,22 +48,22 @@ enum InstallLocation {
         return $this._asset
     }
 
-    [string] get_workDir() {
+    [string] workDir() {
         if (-not ($this._workDir)) {
             $this._workDir = $this.NewTempDir()
         }
         return $this._workDir
     }
 
-    [string] get_assetFilename() {
-        return $this.asset.browser_download_url -split '/' | Select-Object -Last 1
+    [string] assetFilename() {
+        return $this.asset().browser_download_url -split '/' | Select-Object -Last 1
     }
 
-    [string] get_installPath() {
-        return (Join-Path -Path $this.installDirectory -ChildPath $this.caryatidPluginFilename)
+    [string] installPath() {
+        return (Join-Path -Path $this.installDirectory() -ChildPath $this.caryatidPluginFilename)
     }
 
-    [string] get_installDirectory() {
+    [string] installDirectory() {
         switch ($this.InstallLocation) {
             [InstallLocation]::Machine {
                 return Join-Path -Path $env:ProgramFiles -ChildPath "Packer"
@@ -80,24 +80,24 @@ enum InstallLocation {
     [void] Set() {
         $this.ValidateProperties()
         if ($this.Ensure -eq [Ensure]::Present -and -not $this.Test()) {
-            Write-Verbose -Message "Downloading release and installing to $($this.installPath)"
+            Write-Verbose -Message "Downloading release and installing to $($this.installPath())"
 
-            New-Item -Type Directory -Force -Path $this.installDirectory | Out-Null
+            New-Item -Type Directory -Force -Path $this.installDirectory() | Out-Null
             $workDir = $this.NewTempDir() | Select-Object -ExpandProperty FullName
-            $dlPath = Join-Path -Path $this.workDir -ChildPath $this.assetFileName
+            $dlPath = Join-Path -Path $this.workDir() -ChildPath $this.assetFileName()
 
             try {
-                Invoke-WebRequest -Uri $this.asset.browser_download_url -OutFile $workDir
+                Invoke-WebRequest -Uri $this.asset().browser_download_url -OutFile $workDir
                 Write-Verbose -Message "Downloaded asset to $dlPath"
 
-                Expand-Archive -Path $this.dlPath -DestinationPath $workDir
+                Expand-Archive -Path $dlPath -DestinationPath $workDir
                 Write-Verbose -Message "Extracted asset to $workDir"
 
                 $caryatidExe = Get-ChildItem -Recurse -File -Path $workDir -Include $this.caryatidPluginFilename | Select-Object -ExpandProperty FullName
                 Write-Verbose -Message "Found extracted file at $caryatidExe"
                 
-                Move-Item -Path $caryatidExe -Destination $this.installPath
-                Write-Verbose -Message "Moved extracted file to $($this.installPath)"
+                Move-Item -Path $caryatidExe -Destination $this.installPath()
+                Write-Verbose -Message "Moved extracted file to $($this.installPath())"
             } finally {
                 Write-Verbose -Message "Encountered an error, deleting $workDir"
                 Remove-Item -Force $workDir
@@ -105,19 +105,19 @@ enum InstallLocation {
 
         } elseif ($this.Ensure -eq [Ensure]::Absent) {
             Write-Verbose -Message "Removing release and cache"
-            Remove-Item -LiteralPath $this.installPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $this.installPath() -Force -ErrorAction SilentlyContinue
         }
     }
 
     [bool] Test() {
-        if (-not (Test-Path -Path $this.installPath)) {
+        if (-not (Test-Path -Path $this.installPath())) {
             return $false
         }
         return $true
     }
 
     [cWtlCaryatidInstaller] Get() {
-        $this.asset | Out-Null  # Make sure the asset is populated
+        $this.asset() | Out-Null  # Make sure the asset is populated
         return $this
     }
 

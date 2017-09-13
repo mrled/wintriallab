@@ -51,11 +51,12 @@ variables:
 
   wtlDeployInitPath: "$env:SystemDrive\\deployInit.ps1"
 
+  deployExtEnableDebugging: "$true"  # must be "$true" or "$false", with dollar sign
   deployExtName: "wtlDscExtension"
   deployExtInvocation: "[concat(
     'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -Command \"& { ',
       'Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'), ';',
-      '& ', variables('wtlDeployInitPath'), ' -wtlRepoZipUri ', variables('wtlRepoZipUri'), ';',
+      '& ', variables('wtlDeployInitPath'), ' -wtlRepoZipUri ', variables('wtlRepoZipUri'), ' -installDebuggingTools:', variables('deployExtEnableDebugging'), ' ;',
     '}\"'
   )]"
 
