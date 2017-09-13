@@ -56,7 +56,12 @@ variables:
   deployExtInvocation: "[concat(
     'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -Command \"& { ',
       'Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'), ';',
-      '& ', variables('wtlDeployInitPath'), ' -wtlRepoZipUri ', variables('wtlRepoZipUri'), ' -installDebuggingTools:', variables('deployExtEnableDebugging'), ' ;',
+      '& ', variables('wtlDeployInitPath'),
+        ' -wtlRepoZipUri ', variables('wtlRepoZipUri'),
+        ' -installDebuggingTools:', variables('deployExtEnableDebugging'),
+        ' -packerUserName ', parameters('builderVmAdminUsername'),
+        ' -packerUserPassword ', parameters('builderVmAdminPassword'),
+        ' ;',
     '}\"'
   )]"
 

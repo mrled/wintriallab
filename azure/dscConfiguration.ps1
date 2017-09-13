@@ -1,18 +1,12 @@
 <#
-.description
-DSC configurations for WinTrialLab
-#>
-[CmdletBinding()] Param(
-    [string] $chocoInstallDir = (Join-Path -Path ${env:ProgramData} -ChildPath "Chocolatey"),
-    [string] $vsCodeInstallDir = (Join-Path -Path $env:SystemDrive -ChildPath "VSCode"),
-    [string] $caryatidReleaseVersion = "latest"
-)
+DSC configuration for WinTrialLab
 
-<#
 General notes:
 - The debug configuration isn't going to be useful once everything is fully automated, but it's solving the most fucking annoying problems I'm having during debugging when I have to RDP to the server all the time
 - Script resources are weird. Unlike other resources, you cannot use external variables in them, so instead, we use {0} and the -f string format argument to pass in any external variables we require. This also means that we cannot use external functions, which would be harder to pass that way. See also https://stackoverflow.com/questions/23346901/powershell-dsc-how-to-pass-configuration-parameters-to-scriptresources#27848013
 #>
+
+$defaultChocoInstallDir = Join-Path -Path ${env:ProgramData} -ChildPath "Chocolatey"
 
 <#
 .parameter computerName
@@ -39,29 +33,28 @@ Note that this *should not* do anything that requires a restart, since we call i
 #>
 Configuration WtlDbgConfig {
     param(
-        [string[]] $computerName = $env:COMPUTERNAME
+        [string[]] $ComputerName = $env:COMPUTERNAME,
+        [string] $ChocoInstallDir = $defaultChocoInstallDir
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
     Import-DscResource -ModuleName cChoco
 
-    Node $computerName {
+    Node $ComputerName {
 
         cChocoInstaller "InstallChoco" {
-            # It seems like this should add $chocoInstallDir\bin to PATH, but it doesn't appear to do so at the Machine level
-            InstallDir = $chocoInstallDir
+            # It seems like this should add $ChocoInstallDir\bin to PATH, but it doesn't appear to do so at the Machine level
+            InstallDir = $ChocoInstallDir
         }
         Script "AddChocoToSystemPath" {
             GetScript = { return @{ Result = "" } }
-            TestScript = ({
-                $chocoInstallDir = "{0}"
-                [Environment]::GetEnvironmentVariable("Path", "Machine") -split ';' -contains "$chocoInstallDir\bin"
-            } -f @($chocoInstallDir))
-            SetScript = ({
-                $chocoInstallDir = "{0}"
-                $path = [Environment]::GetEnvironmentVariable("Path", "Machine") + [System.IO.Path]::PathSeparator + "$chocoInstallDir\bin"
+            TestScript = {
+                [Environment]::GetEnvironmentVariable("Path", "Machine") -split ';' -contains "${using:ChocoInstallDir}\bin"
+            }
+            SetScript = {
+                $path = [Environment]::GetEnvironmentVariable("Path", "Machine") + [System.IO.Path]::PathSeparator + "${using:ChocoInstallDir}\bin"
                 [Environment]::SetEnvironmentVariable("Path", $path, "Machine")
-            } -f @($chocoInstallDir))
+            }
         }
 
         # Fucking line endings and fucking Notepad make me want to kms
@@ -123,7 +116,10 @@ Configuration WtlDbgConfig {
 
 Configuration WtlConfig {
     param(
-        [string[]] $computerName = $env:COMPUTERNAME
+        [string[]] $ComputerName = $env:COMPUTERNAME,
+        [string] $ChocoInstallDir = $defaultChocoInstallDir,
+        [string] $CaryatidReleaseVersion = "latest",
+        [Parameter(Mandatory)] [PSCredential] $PackerUserCredential
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
@@ -132,7 +128,7 @@ Configuration WtlConfig {
     Import-DscResource -ModuleName cWtlShortcut
     Import-DscResource -ModuleName cWtlCaryatidInstaller
 
-    Node $computerName {
+    Node $ComputerName {
 
         ## WinTrialLab settings
 
@@ -157,23 +153,21 @@ Configuration WtlConfig {
         }
 
         cChocoInstaller "InstallChoco" {
-            # It seems like this should add $chocoInstallDir\bin to PATH, but it doesn't appear to do so at the Machine level
-            InstallDir = $chocoInstallDir
+            # It seems like this should add $ChocoInstallDir\bin to PATH, but it doesn't appear to do so at the Machine level
+            InstallDir = $ChocoInstallDir
         }
         Script "AddChocoToSystemPath" {
             GetScript = { return @{ Result = "" } }
-            TestScript = ({
-                $chocoInstallDir = "{0}"
-                [Environment]::GetEnvironmentVariable("Path", "Machin") -split ';' -contains "$chocoInstallDir\bin"
-            } -f @($chocoInstallDir))
-            SetScript = ({
-                $chocoInstallDir = "{0}"
-                $path = [Environment]::GetEnvironmentVariable("Path", "Machine") + [System.IO.Path]::PathSeparator + "$chocoInstallDir\bin"
+            TestScript = {
+                [Environment]::GetEnvironmentVariable("Path", "Machine") -split ';' -contains "${using:ChocoInstallDir}\bin"
+            }
+            SetScript = {
+                $path = [Environment]::GetEnvironmentVariable("Path", "Machine") + [System.IO.Path]::PathSeparator + "${using:ChocoInstallDir}\bin"
                 [Environment]::SetEnvironmentVariable("Path", $path, "Machine")
-            } -f @($chocoInstallDir))
+            }
         }
         cChocoPackageInstaller "ChocoInstallPacker" {
-            # Installed to $chocoInstallDir/bin as of 1.0.4
+            # Installed to $ChocoInstallDir/bin as of 1.0.4
             # https://github.com/StefanScherer/choco-packer/blob/6a059db2d8ec8f1bbc378ee6792d45e5eea54479/tools/chocolateyInstall.ps1
             Name      = 'packer'
             Ensure    = 'Present'
@@ -182,7 +176,8 @@ Configuration WtlConfig {
 
         cWtlCaryatidInstaller "InstallCaryatidPackerPlugin" {
             Ensure = "Present"
-            ReleaseVersion = $caryatidReleaseVersion
+            ReleaseVersion = $CaryatidReleaseVersion
+            PsDscRunAsCredential = $PackerUserCredential
         }
 
         # Script "RunPacker" {
