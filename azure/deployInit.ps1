@@ -69,44 +69,7 @@ function Write-EventLogWrapper {
     Write-EventLog -LogName $eventLogName -Source $eventLogSource -EventID $eventId -EntryType $entryType -Message $MessagePlus
 }
 
-<#
-.description
-Get the PATH environment variables from Machine, User, and Process locations, and update the current Powershell process's PATH variable to contain all values from each of them. Call it after updating the Machine or User PATH value (which may happen automatically during say installing software) so you don't have to launch a new Powershell process to get them.
-#>
-function Update-EnvironmentPath {
-    [CmdletBinding()] Param()
-    $oldPath = $env:PATH
-    $machinePath = [Environment]::GetEnvironmentVariable("PATH", "Machine") -split ";"
-    $userPath = [Environment]::GetEnvironmentVariable("PATH", "User") -split ";"
-    $processPath = [Environment]::GetEnvironmentVariable("PATH", "Process") -split ";"
-    $env:PATH = ($machinePath + $userPath + $processPath | Select-Object -Unique) -join ";"
-    Write-EventLogWrapper -message "Updated PATH environment variable`r`n`r`nNew value: $($env:PATH -replace ';', "`r`n")`r`n`r`nOld value: $($oldPath -replace ';', "`r`n")"
-}
-
-<#
-.description
-Wrap calls to external executables so that we can update the %PATH% first and check the exit code afterwards.
-#>
-function Invoke-PathExecutable {
-    [CmdletBinding()] Param(
-        [Parameter(Mandatory=$True)] [String] $commandLine
-    )
-    Update-EnvironmentPath
-    try {
-        Invoke-Expression $commandLine
-        if ($LASTEXITCODE -ne 0) {
-            throw "Command line '$commandLine' exited with code '$LASTEXITCODE'"
-        } else {
-            Write-EventLogWrapper -message "Command line '$commandLine' exited successfully with code '$LASTEXITCODE'"
-        }
-    } catch {
-        Write-EventLogWrapper -message "When attempting to run command '$commandLine', got error '$_'"
-        throw $_
-    }
-}
-
 function New-TemporaryDirectory {
-    $newTempDirPath = ""
     do {
         $newTempDirPath = Join-Path $env:TEMP (New-Guid | Select-Object -ExpandProperty Guid)
     } while (Test-Path -Path $newTempDirPath)
@@ -121,10 +84,10 @@ Install-PackageProvider -Name NuGet -Force
 Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
 Install-Module -Name xHyper-V, cChoco
 
-# Download the wintriallab repo
 if ($PsCmdlet.ParameterSetName -match "InitializeVm") {
+    # Download the wintriallab repo
     $wtlDlDir = New-TemporaryDirectory
-    $wtlExtractDir = New-TemporaryDirectory
+    $wtlExtractDir = New-Item -Type Directory -Force -Path (Join-Path -Path $wtlDlDir -ChildPath "extracted")
     $wtlZipFile = Join-Path -Path $wtlDlDir -ChildPath "wtl.zip"
     Invoke-WebRequest -Uri $wtlRepoZipUri -OutFile $wtlZipFile
     Expand-Archive -Path $wtlZipFile -DestinationPath $wtlExtractDir

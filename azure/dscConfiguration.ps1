@@ -1,24 +1,20 @@
 <#
 DSC configuration for WinTrialLab
-
-General notes:
-- The debug configuration isn't going to be useful once everything is fully automated, but it's solving the most fucking annoying problems I'm having during debugging when I have to RDP to the server all the time
-- Script resources are weird. Unlike other resources, you cannot use external variables in them, so instead, we use {0} and the -f string format argument to pass in any external variables we require. This also means that we cannot use external functions, which would be harder to pass that way. See also https://stackoverflow.com/questions/23346901/powershell-dsc-how-to-pass-configuration-parameters-to-scriptresources#27848013
 #>
 
 $defaultChocoInstallDir = Join-Path -Path ${env:ProgramData} -ChildPath "Chocolatey"
 
 <#
-.parameter computerName
+.parameter ComputerName
 This probably has to be "localhost".
 The reason for this it that any other value - for instance, '$env:COMPUTERNAME' - triggers behavior that attempts to run the configuration over WinRM. This won't see the custom $env:PSModulePath we may have set in deployInit.ps1, and may have Execution Policy issues as well.
 #>
 [DSCLocalConfigurationManager()]
 Configuration WtlLcmConfig {
     param(
-        [string[]] $computerName = "localhost"
+        [string[]] $ComputerName = "localhost"
     )
-    Node $computerName {
+    Node $ComputerName {
         Settings {
             RebootNodeIfNeeded = $true
             ActionAfterReboot = 'ContinueConfiguration'
@@ -90,7 +86,6 @@ Configuration WtlDbgConfig {
         }
 
         Registry "DoNotOpenServerManagerAtLogon" {
-            # New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\ServerManager -Name DoNotOpenServerManagerAtLogon -PropertyType DWORD -Value "0x1" –Force
             Ensure = "Present"
             Force = $true
             Key = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ServerManager"
@@ -130,8 +125,6 @@ Configuration WtlConfig {
 
     Node $ComputerName {
 
-        ## WinTrialLab settings
-
         WindowsFeature "Hyper-V" {
             Ensure = "Present"
             Name = "Hyper-V"
@@ -167,8 +160,7 @@ Configuration WtlConfig {
             }
         }
         cChocoPackageInstaller "ChocoInstallPacker" {
-            # Installed to $ChocoInstallDir/bin as of 1.0.4
-            # https://github.com/StefanScherer/choco-packer/blob/6a059db2d8ec8f1bbc378ee6792d45e5eea54479/tools/chocolateyInstall.ps1
+            # Installed to $ChocoInstallDir/bin as of 1.0.4; see chocolateyInstall.ps1
             Name      = 'packer'
             Ensure    = 'Present'
             DependsOn = '[cChocoInstaller]InstallChoco'
@@ -180,11 +172,5 @@ Configuration WtlConfig {
             PsDscRunAsCredential = $PackerUserCredential
         }
 
-        # Script "RunPacker" {
-        #     GetScript = {}
-        #     TestScript = {}
-        #     SetScript = {}
-        #     DependsOn = @("[Script]InstallCaryatidPackerPlugin", "[WindowsFeature]Hyper-V-Powershell")
-        # }
     }
 }
