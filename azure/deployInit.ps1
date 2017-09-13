@@ -24,7 +24,7 @@ Install tools that are helpful for troubleshooting and debugging my DSC configur
     [Parameter(ParameterSetName="InitializeVm", Mandatory)] [string] $wtlRepoZipUri,
     [Parameter(ParameterSetName="RunLocal", Mandatory)] [switch] $runLocal,
     [Parameter(Mandatory)] [string] $packerUserName,
-    [Parameter(Mandatory)] [SecureString] $packerUserPassword,
+    [Parameter(Mandatory)] [string] $packerUserPassword,
     [string] $eventLogName = "WinTrialLab",
     [string] $eventLogSource = "WinTrialLab-azure-deployInit.ps1",
     [switch] $installDebuggingTools
@@ -131,7 +131,7 @@ if ($installDebuggingTools) {
 $wtlWorkDir = Join-Path -Path $dscWorkDirBase -ChildPath "WtlConfig"
 $wtlConfigParams = @{
     OutputPath = $wtlWorkDir
-    PackerUserCredential = New-Object TypeName PSCredential -ArgumentList @($packerUserName, $packerUserPassword)
+    PackerUserCredential = New-Object -TypeName PSCredential -ArgumentList @($packerUserName, (ConvertTo-SecureString -String $packerUserPassword -AsPlainText -Force))
 }
 WtlConfig @wtlConfigParams | Write-EventLogWrapper
 Start-DscConfiguration -Path $wtlWorkDir -Force:$runLocal | Write-EventLogWrapper
