@@ -739,7 +739,7 @@ def main(*args, **kwargs):
                 'builderVmAdminUsername':   config.builder_vm_admin_username,
                 'builderVmAdminPassword':   config.builder_vm_admin_password,
                 'builderVmSize':            config.builder_vm_size,
-                'timeZone':                 time.tzname[1]},
+                'builderVmTimeZone':        time.tzname[time.localtime().tm_isdst]},
             config.deployment_name,
             deletefirst=config.delete,
             validate=(config.action == 'validate'))

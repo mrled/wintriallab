@@ -160,7 +160,8 @@ resources:
       computerName: "[variables('builderVmName')]"
       adminUsername: "[parameters('builderVmAdminUsername')]"
       adminPassword: "[parameters('builderVmAdminPassword')]"
-      timeZone: "[parameters('builderVmTimeZone')"
+      windowsConfiguration:
+        timeZone: "[parameters('builderVmTimeZone')"
     storageProfile:
       imageReference:
         publisher: "[variables('imagePublisher')]"
