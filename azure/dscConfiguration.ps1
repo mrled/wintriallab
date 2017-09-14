@@ -167,6 +167,12 @@ Configuration WtlConfig {
             Ensure    = 'Present'
             DependsOn = '[cChocoInstaller]InstallChoco'
         }
+        cChocoPackageInstaller "InstallSsh" {
+            Name = 'openssh'
+            Ensure = 'Present'
+            Params = '/SSHServerFeature'
+            DependsOn = '[cChocoInstaller]InstallChoco'
+        }
 
         cWtlCaryatidInstaller "InstallCaryatidPackerPlugin" {
             Ensure = "Present"
