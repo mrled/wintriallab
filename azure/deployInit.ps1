@@ -134,6 +134,18 @@ $wtlWorkDir = Join-Path -Path $dscWorkDirBase -ChildPath "WtlConfig"
 $wtlConfigParams = @{
     OutputPath = $wtlWorkDir
     PackerUserCredential = New-Object -TypeName PSCredential -ArgumentList @($packerUserName, (ConvertTo-SecureString -String $packerUserPassword -AsPlainText -Force))
+    # We must use localhost here because we must use localhost in the ConfigurationData that sets PSDscAllowPlainTextPassword
+    ComputerName = "localhost"
+    ConfigurationData = @{
+        # Arguably, the PackerUserCredential should be encrypted
+        # https://blogs.technet.microsoft.com/ashleymcglone/2015/12/18/using-credentials-with-psdscallowplaintextpassword-and-psdscallowdomainuser-in-powershell-dsc-configuration-data/
+        AllNodes = @(
+            @{
+                NodeName = 'localhost'
+                PSDscAllowPlainTextPassword = $true
+            }
+        )
+    }
 }
 WtlConfig @wtlConfigParams | Write-EventLogWrapper
 Start-DscConfiguration -Path $wtlWorkDir -Force:$runLocal | Write-EventLogWrapper
