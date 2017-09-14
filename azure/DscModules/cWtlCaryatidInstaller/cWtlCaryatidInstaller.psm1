@@ -6,7 +6,7 @@ enum Ensure {
 # FIXME: This doesn't ensure that the version requested is actually installed, just that some file exists in the install location
 
 # Require a credential because we install to $env:AppData, but DSC configurations are run by SYSTEM
-[DscResource(RunAsCredential="Required")]
+[DscResource(RunAsCredential="Mandatory")]
 class cWtlCaryatidInstaller {
 
     # The version to install
