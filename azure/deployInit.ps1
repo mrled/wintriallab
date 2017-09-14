@@ -77,7 +77,9 @@ function New-TemporaryDirectory {
 }
 
 Write-EventLogWrapper -message "Initializing the WinTrialLab cloud builder deployment..."
-Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine
+
+# Use -Force to prevent a prompt if we run this again manually from the commandline e.g. during debugging
+Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope LocalMachine -Force
 
 # Install DSC prerequisites
 Install-PackageProvider -Name NuGet -Force
