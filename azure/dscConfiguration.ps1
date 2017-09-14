@@ -12,12 +12,14 @@ The reason for this it that any other value - for instance, '$env:COMPUTERNAME' 
 [DSCLocalConfigurationManager()]
 Configuration WtlLcmConfig {
     param(
-        [string[]] $ComputerName = "localhost"
+        [string[]] $ComputerName = "localhost",
+        [string] $DscCertificateThumbprint
     )
     Node $ComputerName {
         Settings {
             RebootNodeIfNeeded = $true
             ActionAfterReboot = 'ContinueConfiguration'
+            CertificateId = $DscCertificateThumbprint
         }
     }
 }

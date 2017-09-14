@@ -99,6 +99,30 @@ if ($PsCmdlet.ParameterSetName -match "InitializeVm") {
     $wtlDir = Resolve-Path -Path $PSScriptRoot\..
 }
 
+<#
+Create certificate for encrypted credentials in MOF files
+
+We need to pass a credential for the WtlConfig configuration. 2 options:
+1. Set `PSDscAllowPlainTextPassword = $true` in the ConfigurationData for the configuration
+2. Encrypt the credentials with a cert
+(See also https://blogs.technet.microsoft.com/ashleymcglone/2015/12/18/using-credentials-with-psdscallowplaintextpassword-and-psdscallowdomainuser-in-powershell-dsc-configuration-data/)
+
+Option 1 only works when the NodeName is "localhost" (meaning we have to pass -ComputerName localhost as well); it will not work when the NodeName is $env:COMPUTERNAME.
+
+The NodeName triggers different behavior depending on whether or not it is "localhost". If it is "localhost", WinRM is not used. If it is not "localhost", WinRM is used to connect to the host - even if the host is $env:COMPUTERNAME.
+
+However, there is a complication: Script resources.
+Script resources do not automatically see variables outside their script block. To see those variables, use the Using namespace, like this:
+    $internalVar = $using:externalVar
+(where $externalVar is defined outside the Script resource).
+
+Unfortunately, the Using namespace doesn't appear to work without WinRM, and WinRM will not work with PSDscAllowPlainTextPassword, so we must create a cert and configure DSC to encrypt the credential in the MOF with the cert.
+#>
+$mofCredentialCertName = 'WtlDscCredCert'
+$mofCredentialCert = New-SelfSignedCertificate -Type DocumentEncryptionCertLegacyCsp -DnsName $mofCredentialCertName -HashAlgorithm SHA256
+$mofCredentialPublicCertPath = Join-Path -Path $dscWorkDirBase -ChildPath "${mofCredentialCertName}.cer"
+Export-Certificate -Certificate $mofCredentialCert -FilePath $mofCredentialPublicCertPath -Force
+
 # Ensure Powershell can find our DSC resources
 # Note that DSC configurations are applied under the SYSTEM user, so we cannot just set our own copy of $env:PSModulePath and expect it to pick that up
 $machinePsModPath = "$env:ProgramFiles\WindowsPowerShell\Modules"
@@ -115,7 +139,11 @@ if (Test-Path $dscWorkDirBase) {
 
 # Configure the Local Configuration Manager first
 $lcmWorkDir = Join-Path -Path $dscWorkDirBase -ChildPath "WtlLcmConfig"
-WtlLcmConfig -OutputPath $lcmWorkDir | Write-EventLogWrapper
+$wtlLcmConfigParams = @{
+    OutputPath = $lcmWorkDir
+    CertificateId = $mofCredentialCert.Thumbprint
+}
+WtlLcmConfig @wtlLcmConfigParams | Write-EventLogWrapper
 Set-DscLocalConfigurationManager -Path $lcmWorkDir | Write-EventLogWrapper
 
 if ($installDebuggingTools) {
@@ -134,18 +162,11 @@ $wtlWorkDir = Join-Path -Path $dscWorkDirBase -ChildPath "WtlConfig"
 $wtlConfigParams = @{
     OutputPath = $wtlWorkDir
     PackerUserCredential = New-Object -TypeName PSCredential -ArgumentList @($packerUserName, (ConvertTo-SecureString -String $packerUserPassword -AsPlainText -Force))
-    # We must use localhost here because we must use localhost in the ConfigurationData that sets PSDscAllowPlainTextPassword
-    ComputerName = "localhost"
-    ConfigurationData = @{
-        # Arguably, the PackerUserCredential should be encrypted
-        # https://blogs.technet.microsoft.com/ashleymcglone/2015/12/18/using-credentials-with-psdscallowplaintextpassword-and-psdscallowdomainuser-in-powershell-dsc-configuration-data/
-        AllNodes = @(
-            @{
-                NodeName = 'localhost'
-                PSDscAllowPlainTextPassword = $true
-            }
-        )
-    }
+    ConfigurationData = @{ AllNodes = @(@{
+        NodeName = '*'
+        Thumbprint = $mofCredentialCert.Thumbprint
+        CertificateFile = $mofCredentialPublicCertPath
+    })}
 }
 WtlConfig @wtlConfigParams | Write-EventLogWrapper
 Start-DscConfiguration -Path $wtlWorkDir -Force:$runLocal | Write-EventLogWrapper
