@@ -27,6 +27,9 @@ parameters:
     metadata:
       # https://azure.microsoft.com/en-us/blog/introducing-the-new-dv3-and-ev3-vm-sizes/
       description: Size of the VM. Note that only Standard Dv3 and Ev3 VMs support the nested virtualization we use.
+  builderVmTimeZone:
+    type: string
+    defaultValue: UTC
 
 variables:
 
@@ -157,6 +160,7 @@ resources:
       computerName: "[variables('builderVmName')]"
       adminUsername: "[parameters('builderVmAdminUsername')]"
       adminPassword: "[parameters('builderVmAdminPassword')]"
+      timeZone: "[parameters('builderVmTimeZone')"
     storageProfile:
       imageReference:
         publisher: "[variables('imagePublisher')]"

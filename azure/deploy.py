@@ -738,7 +738,8 @@ def main(*args, **kwargs):
                 'opInsightsWorkspaceName':  config.opinsights_workspace_name,
                 'builderVmAdminUsername':   config.builder_vm_admin_username,
                 'builderVmAdminPassword':   config.builder_vm_admin_password,
-                'builderVmSize':            config.builder_vm_size},
+                'builderVmSize':            config.builder_vm_size,
+                'timeZone':                 time.tzname[1]},
             config.deployment_name,
             deletefirst=config.delete,
             validate=(config.action == 'validate'))
