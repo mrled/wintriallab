@@ -27,9 +27,17 @@ parameters:
     metadata:
       # https://azure.microsoft.com/en-us/blog/introducing-the-new-dv3-and-ev3-vm-sizes/
       description: Size of the VM. Note that only Standard Dv3 and Ev3 VMs support the nested virtualization we use.
+  # I really wanted to set this automatically, but couldn't find a reliable way to convert between IANA (from Linux, including the PSYOPS docker container) to Windows for both  standard and DST names
   builderVmTimeZone:
     type: string
-    defaultValue: UTC
+    # defaultValue: GMT Standard Time
+    defaultValue: Central Daylight Time
+    metadata:
+      description: "Name for a timezone in Windows format.
+        See also
+        <https://technet.microsoft.com/en-us/library/cc749073(v=ws.10).aspx>
+        and
+        <https://blogs.technet.microsoft.com/dst2007/2007/08/22/q-is-there-a-list-of-the-time-zones-and-daylight-saving-time-changes-in-windows/>"
 
 variables:
 
