@@ -23,6 +23,8 @@
     - Maybe some simple cheap standalone service with a multi-hour timeout that can destroy the entire environment
     - and ALSO a way to call that service from the VM, so that it can call it immediately when Caryatid is done?
     - Azure Scheduler looks like it can do this: https://azure.microsoft.com/en-us/resources/templates/?term=scheduler
+    - Could be as simple as: https://docs.microsoft.com/en-us/rest/api/resources/ResourceGroups/Delete
+    - Not sure how that handles auth tho. Might be simpler to create some serverless HTTP service (?) that doesn't require credentials, then call it from the Scheduler. That would be simpler for tearing it down from the builder VM itself also - just call that endpoint with no authentication, or with some magic token that I generate in deploy.py and pass into the service at deployment time. Azure credentials with permission to delete the resource group could be part of the service itself, or maybe their components would be passed in in the route?
 - Add remote logging to the cloud builder
     - I need logs for at least the WinTrialLab and DSC event sources
     - I also need the logs from the Azure template's DSC configuration extension from `C:\Package\...`
