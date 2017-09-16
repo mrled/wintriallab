@@ -96,8 +96,10 @@ if ($PsCmdlet.ParameterSetName -match "InitializeVm") {
     $wtlDir = Get-ChildItem -Path $wtlExtractDir | Select-Object -First 1 -ExpandProperty FullName
     Write-EventLogWrapper "wintriallab files and directories:`r`nwtlDlDir = '$wtlDlDir'`r`nwtlExtractDir = '$wtlExtractDir'`r`nwtlZipFile = '$wtlZipFile'`r`nwtlDir = '$wtlDir'`r`n"
 } else {
-    $wtlDir = Resolve-Path -Path $PSScriptRoot\..
+    $wtlDir = Resolve-Path -Path $PSScriptRoot\.. | Select-Object -ExpandProperty Path
 }
+
+$wtlBuilderDir = Join-Path -Path $wtlDir -ChildPath "azure"
 
 <#
 Create certificate for encrypted credentials in MOF files
@@ -118,20 +120,24 @@ Script resources do not automatically see variables outside their script block. 
 
 Unfortunately, the Using namespace doesn't appear to work without WinRM, and WinRM will not work with PSDscAllowPlainTextPassword, so we must create a cert and configure DSC to encrypt the credential in the MOF with the cert.
 #>
+Write-EventLogWrapper -message "Creating MOF encryption cert..."
 $mofCredentialCertName = 'WtlDscCredCert'
 $mofCredentialCert = New-SelfSignedCertificate -Type DocumentEncryptionCertLegacyCsp -DnsName $mofCredentialCertName -HashAlgorithm SHA256
-$mofCredentialPublicCertPath = Join-Path -Path $dscWorkDirBase -ChildPath "${mofCredentialCertName}.cer"
-Export-Certificate -Certificate $mofCredentialCert -FilePath $mofCredentialPublicCertPath -Force
+$mofCredentialPublicCertPath = Join-Path -Path $wtlBuilderDir -ChildPath "${mofCredentialCertName}.cer"
+Export-Certificate -Cert $mofCredentialCert -FilePath $mofCredentialPublicCertPath -Force
 
 # Ensure Powershell can find our DSC resources
 # Note that DSC configurations are applied under the SYSTEM user, so we cannot just set our own copy of $env:PSModulePath and expect it to pick that up
 $machinePsModPath = "$env:ProgramFiles\WindowsPowerShell\Modules"
+Write-EventLogWrapper -message "Copying WinTrialLab DSC modules to $machinePsModPath ..."
 Copy-Item -Recurse -Force -Path $wtlDir\azure\DscModules\* -Destination $machinePsModPath
 
 # Initialize the DSC configuration
 Write-EventLogWrapper "Invoking DSC configuration..."
-. "$wtlDir\azure\dscConfiguration.ps1"
-$dscWorkDirBase = New-Item -Type Directory -Path "$wtlDir\azure\DscConfigs" -Force | Select-Object -ExpandProperty FullName
+$dscConfigScript = Join-Path -Path $wtlBuilderDir -ChildPath "dscConfiguration.ps1"
+. $dscConfigScript
+$dscWorkDirBase = Join-Path -Path $wtlBuilderDir -ChildPath "DscConfigs"
+New-Item -Type Directory -Path $dscWorkDirBase -Force | Out-Null
 Write-EventLogWrapper -message "Using '$dscWorkDirBase' for DSC configurations"
 if (Test-Path $dscWorkDirBase) {
     Remove-Item -Force -Recurse -Path $dscWorkDirBase
