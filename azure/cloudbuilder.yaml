@@ -36,10 +36,13 @@ parameters:
         DST names such as 'Central Daylight Time' will result in a deployment failure.
         However, when the standard name is passed, if the timezone is currently observing DST,
         the VM will detect this automatically and DST will affect time repoted by e.g. Get-Date.
-        See also
-        <https://technet.microsoft.com/en-us/library/cc749073(v=ws.10).aspx>
-        and
-        <https://blogs.technet.microsoft.com/dst2007/2007/08/22/q-is-there-a-list-of-the-time-zones-and-daylight-saving-time-changes-in-windows/>"
+        The best way to enumerate valid timezones is from .NET.
+        The following works in Powershell on Windows and Powershell Core on Unix:
+        `[System.TimeZoneInfo]::GetSystemTimeZones() | Select-Object -ExpandProperty StandardName`.
+        See also:
+        <https://technet.microsoft.com/en-us/library/cc749073(v=ws.10).aspx>,
+        <https://blogs.technet.microsoft.com/dst2007/2007/08/22/q-is-there-a-list-of-the-time-zones-and-daylight-saving-time-changes-in-windows/>,
+        <https://github.com/Azure/azure-sdk-for-node/issues/2266>"
 
 variables:
 
