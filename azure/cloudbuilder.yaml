@@ -27,13 +27,15 @@ parameters:
     metadata:
       # https://azure.microsoft.com/en-us/blog/introducing-the-new-dv3-and-ev3-vm-sizes/
       description: Size of the VM. Note that only Standard Dv3 and Ev3 VMs support the nested virtualization we use.
-  # I really wanted to set this automatically, but couldn't find a reliable way to convert between IANA (from Linux, including the PSYOPS docker container) to Windows for both  standard and DST names
   builderVmTimeZone:
     type: string
-    # defaultValue: GMT Standard Time
-    defaultValue: Central Daylight Time
+    defaultValue: GMT Standard Time
     metadata:
       description: "Name for a timezone in Windows format.
+        Note that only standard names such as 'Central Standard Time' should be used;
+        DST names such as 'Central Daylight Time' will result in a deployment failure.
+        However, when the standard name is passed, if the timezone is currently observing DST,
+        the VM will detect this automatically and DST will affect time repoted by e.g. Get-Date.
         See also
         <https://technet.microsoft.com/en-us/library/cc749073(v=ws.10).aspx>
         and
@@ -169,7 +171,7 @@ resources:
       adminUsername: "[parameters('builderVmAdminUsername')]"
       adminPassword: "[parameters('builderVmAdminPassword')]"
       windowsConfiguration:
-        timeZone: "[parameters('builderVmTimeZone')"
+        timeZone: "[parameters('builderVmTimeZone')]"
     storageProfile:
       imageReference:
         publisher: "[variables('imagePublisher')]"

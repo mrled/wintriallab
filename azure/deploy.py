@@ -532,6 +532,7 @@ class ProcessedDeployConfig:
         deployopts.add_argument('--storage-account-name')
         deployopts.add_argument('--opinsights-workspace-name')
         deployopts.add_argument('--builder-vm-size')
+        deployopts.add_argument('--builder-vm-timezone')
         deployopts.add_argument(
             '--delete', action='store_true',
             help="If the resource group already exists, delete it before starting the deployment.")
@@ -640,6 +641,7 @@ class ProcessedDeployConfig:
                 'builder_vm_admin_username',
                 'builder_vm_admin_password',
                 'builder_vm_size',
+                'builder_vm_timezone',
                 'deployment_name']
         elif self.action == 'delete':
             required = [
@@ -739,7 +741,8 @@ def main(*args, **kwargs):
                 'builderVmAdminUsername':   config.builder_vm_admin_username,
                 'builderVmAdminPassword':   config.builder_vm_admin_password,
                 'builderVmSize':            config.builder_vm_size,
-                'builderVmTimeZone':        time.tzname[time.localtime().tm_isdst]},
+                'builderVmTimeZone':        config.builder_vm_timezone,
+            },
             config.deployment_name,
             deletefirst=config.delete,
             validate=(config.action == 'validate'))
