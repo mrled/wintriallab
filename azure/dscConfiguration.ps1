@@ -117,6 +117,8 @@ Configuration WtlConfig {
         [string] $ChocoInstallDir = $defaultChocoInstallDir,
         [string] $CaryatidReleaseVersion = "latest",
         [Parameter(Mandatory)] [PSCredential] $PackerUserCredential
+        # [string] $PackerConfigRoot = $(Resolve-Path -Path "$PSScriptRoot\..\packer" | Select-Object -ExpandProperty Path),
+        # [Parameter(Mandatory)] [string[]] $WtlPackerProjectName
     )
 
     Import-DscResource -ModuleName PSDesiredStateConfiguration
@@ -179,6 +181,20 @@ Configuration WtlConfig {
             ReleaseVersion = $CaryatidReleaseVersion
             PsDscRunAsCredential = $PackerUserCredential
         }
+
+        # Script "RunPacker" {
+        #     GetScript = { return @{ Result = "" } }
+        #     TestScript = { return $false }
+        #     SetScript = {
+        #         $configRoot = $using:PackerConfigRoot
+        #         $project = $using:WtlProjectName
+        #         $projectDir = Join-Path -Path $configRoot -ChildPath $project
+        #         cd $projectDir
+        #         $templateName = "${project}_packerfile.json"
+        #         $templatePath = Join-Path -Path $projectDir -ChildPath $templateName
+        #         packer.exe build -only=hyperv-iso "$templatePath"
+        #     }
+        # }
 
     }
 }
