@@ -6,15 +6,15 @@ Vagrant.require_version ">= 1.6.2"
 # I do this because, when run from my buildlab.ps1 script, I set ENV:VAGRANT_CWD to this directory,
 # but pushd away into a working directory on a bigger disk for actually keeping the VM
 thisVagrantfileDir = File.dirname(__FILE__)
-commonScriptsDir = "#{thisVagrantfileDir}/../../scripts"
+winTrialLabDir = File.join(thisVagrantfileDir, "..", "..")
 
 cpuCount = 2
 memCount = 4096
 
 Vagrant.configure("2") do |config|
     config.vm.define "FreyjaA-2017-07-18"
-    config.vm.box = "wintriallab-win2016-64"
-    config.vm.box_url = "file:///C:/Users/mledbetter/Documents/Vagrant/wintriallab-win2016-64.json"
+    config.vm.box = "wintriallab-win10-32"
+    config.vm.box_url = "file:///C:/Users/mledbetter/Documents/Vagrant/wintriallab-win10-32.json"
     config.vm.communicator = "winrm"
     config.winrm.username = "vagrant"
     config.winrm.password = "V@grant123"
@@ -49,6 +49,7 @@ Vagrant.configure("2") do |config|
 
     # config.vm.synced_folder "#{ENV['USERPROFILE']}\\Downloads", "/HostDownloads", create: true
     config.vm.synced_folder ".", "/vagrant", disabled: true
+    config.vm.synced_folder winTrialLabDir, "/wintriallab", :mount_options => ["ro"]
 
-    config.vm.provision "shell", inline: "C:/freyja-provisioner.ps1"
+    config.vm.provision "shell", inline: "powershell.exe -File C:\\wintriallab\\scripts\\freyja-provisioner.ps1"
 end
