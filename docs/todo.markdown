@@ -15,6 +15,7 @@ Packer:
 - Determine once and for all if we can do everything necessary without turning off UAC (`<EnableLUA>false</EnableLUA>` in Autounattend) and document the findings
 - Can [sysprep](https://msdn.microsoft.com/en-us/windows/hardware/commercialize/manufacture/desktop/sysprep--generalize--a-windows-installation) do anything interesting for us? I'm particularly interested in its `/generalize` option, because the docs I've seen claim it shuts down the machine, and the next time it boots, the clock for Windows activation resets. (Also seen docs say you can only `/generalize` a given Windows image 8 times.) Could this mean I can create a Windows trial Vagrant box that I don't have to recreate every 90 days?
 - Add/fix all unimplemented/broken boxes from the "Status" section in [the readme](../readme.markdown)
+- Explore using Hyper-V gen2 VMs to build Packer boxes. This necessitates a pre- `packer build` step, where a `.iso` file is build containing `Autounattend.xml` and other build scripts
 
 Vagrant:
 
