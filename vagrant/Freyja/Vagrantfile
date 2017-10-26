@@ -1,0 +1,89 @@
+# Freyja Vagrantfile
+
+# Hyper-V integration services configuration requires 1.9.4
+Vagrant.require_version ">= 1.9.4"
+
+# Find the repository root directory
+winTrialLabDir = File.join(File.dirname(__FILE__), "..", "..")
+
+# How many VMs to bring up?
+freyjaVmCount = 1
+
+# Why not calculate this based on the current date?
+# Because then it only works once during the `vagrant up`. It won't work for e.g. `vagrant rdp`.
+buildDate = "20171026"
+
+# VM settings - these apply no matter which provider
+cpuCount = 2
+memCount = 2048
+
+Vagrant.configure("2") do |config|
+
+    (1..freyjaVmCount).each do |idx|
+        boxName = "Freyja-#{buildDate}-#{idx}"
+        config.vm.define boxName do |node|
+
+            node.vm.box = "wintriallab-win10-32"
+            node.vm.box_url = "file:///C:/Users/mledbetter/Documents/Vagrant/wintriallab-win10-32.json"
+            node.vm.communicator = "winrm"
+            node.winrm.username = "vagrant"
+            node.winrm.password = "V@grant123"
+            node.vm.guest = :windows
+            node.windows.halt_timeout = 15
+            node.vm.hostname = boxName
+
+            # Some, maybe most?, VPNs only work with bridged connections
+            # Furthermore, working with `vagrant rdp` might be tough on non-bridged public networks
+            # Hyper-V seems like it gets less testing/attention than VirtualBox
+            node.vm.network :public_network, :adapter=>1, type:"dhcp", :bridge=>'HyperVWifiSwitch'
+
+            node.vm.provider :virtualbox do |v, override|
+                #v.gui = true
+                v.customize ["modifyvm", :id, "--cpus", cpuCount]
+                v.customize ["modifyvm", :id, "--memory", memCount]
+                v.customize ["setextradata", "global", "GUI/SuppressMessages", "all" ]
+                v.customize ["modifyvm", :id, "--accelerate2dvideo", "on"]
+                v.customize ["modifyvm", :id, "--vram", 128]
+                v.customize ["modifyvm", :id, "--clipboard", "bidirectional"]
+                v.customize ["modifyvm", :id, "--draganddrop", "bidirectional"]
+            end
+
+            node.vm.provider "hyperv" do |h|
+                h.cpus = cpuCount
+                h.memory = memCount
+                h.vmname = boxName
+                h.differencing_disk = true
+                h.auto_start_action = "Nothing"
+
+                # Default is 120 and it's frequently not enough
+                h.ip_address_timeout = 240
+
+                # This doesn't appear to work, even though the docs say it should
+                # h.auto_stop_action = "ShutDown"
+
+                # Documented here: https://technet.microsoft.com/en-us/library/dn798297%28v=ws.11%29.aspx?f=255&MSPPError=-2147217396
+                h.vm_integration_services = {
+                    guest_service_interface: true,
+                    heartbeat: true,
+
+                    # This must be on in order for Vagrant to find the IP address,
+                    # which it does via Get-VMNetworkAdapter;
+                    # if you run that command and find an empty IPAddresses property,
+                    # it's probably because this was disabled.
+                    key_value_pair_exchange: true,
+
+                    shutdown: true,
+                    time_synchronization: true,
+                    vss: true
+                }
+            end
+
+            # config.vm.synced_folder "#{ENV['USERPROFILE']}\\Downloads", "/HostDownloads", create: true
+            node.vm.synced_folder ".", "/vagrant", disabled: true
+            node.vm.synced_folder winTrialLabDir, "/wintriallab", :mount_options => ["ro"]
+
+            node.vm.provision "shell", inline: "powershell.exe -File C:\\wintriallab\\scripts\\freyja-provisioner.ps1"
+        end
+    end
+
+end
