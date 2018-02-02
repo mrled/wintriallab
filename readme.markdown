@@ -7,12 +7,12 @@ Windows Trial Lab: Build Vagrant boxes from Windows trial ISOs
 - [Caryatid](https://github.com/mrled/caryatid), a Packer plugin
 - Vagrant
 
-Everything is intended to work from Windows or Unix hosts
+Everything is intended to work from both Windows and Unix hosts
 
 ## Status
 
 - vbox win10 32bit: working
-- hyperv win10 32bit: broken
+- hyperv win10 32bit: working
 - vbox win10 64bit: unimplemented
 - hyperv win10 64bit: unimplemented
 - vbox server2016 64bit: unimplemented
@@ -22,7 +22,7 @@ Everything is intended to work from Windows or Unix hosts
 
 1. Change directory to one of the packer builder directories, e.g. `cd packer/wintriallab-win10-32`
 2. Examine the `variables` section of the packerfile, especially `boxname`, `version`, and `catalog_root_url`
-3. Run packer for whatever hypervisor you are using, and optionally supplying an override value for some variables, e.g. `packer -only=virtualbox-iso -var catalog_root_url=$HOME/Vagrant -var version=0.0.1`
+3. Run packer for whatever hypervisor you are using, and optionally supplying an override value for some variables, e.g. `packer build -only=virtualbox-iso -var catalog_root_url=$HOME/Vagrant -var version=0.0.1`
 4. When this finishes, your `catalog_root_url` will have a file name `<BOXNAME>.json`. You can use a `file://` URL to that catalog as the value for `box_url` in a `Vagrantfile`, and Vagrant will notice when you publish new versions of the box. (See [Caryatid](https://github.com/mrled/caryatid)'s documentation for more information.)
 
 There are some Vagrant boxes in the `vagrant` directory. They are intended as examples and are not guaranteed to work or remain stable over time.
