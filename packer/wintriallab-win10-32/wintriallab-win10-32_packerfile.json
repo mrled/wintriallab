@@ -79,7 +79,7 @@
         "name": "{{user `boxname`}}",
         "version": "{{user `version`}}",
         "description": "{{user `description`}}",
-        "catalog_root_url": "{{user `catalog_root_url`}}"
+        "catalog_uri": "{{user `catalog_root_url`}}/{{user `boxname`}}.json"
       }
     ]
   ]
