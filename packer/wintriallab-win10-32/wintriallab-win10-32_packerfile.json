@@ -3,7 +3,8 @@
     "boxname": "wintriallab-win10-32",
     "version": "1.0.{{isotime \"20060102150405\"}}",
     "description": "Windows Trial Lab: Windows 10 x86",
-    "catalog_root_url": "file://{{env `USERPROFILE`}}\\Documents\\Vagrant"
+    "catalog_root_url": "file://C:/Users/mledbetter/Documents/Vagrant",
+    "hyperv_vswitch_name": "NAT"
   },
   "builders": [
     {
@@ -54,7 +55,7 @@
       "enable_virtualization_extensions": true,
       "ram_size": 2048,
       "cpu": 2,
-      "switch_name": "NAT",
+      "switch_name": "{{user `hyperv_vswitch_name`}}",
       "floppy_files": [
         "./Autounattend.xml",
         "../../scripts/win-updates.ps1",

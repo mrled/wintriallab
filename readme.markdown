@@ -22,8 +22,11 @@ Everything is intended to work from both Windows and Unix hosts
 
 1. Change directory to one of the packer builder directories, e.g. `cd packer/wintriallab-win10-32`
 2. Examine the `variables` section of the packerfile, especially `boxname`, `version`, and `catalog_root_url`
-3. Run packer for whatever hypervisor you are using, and optionally supplying an override value for some variables, e.g. `packer build -only=virtualbox-iso -var catalog_root_url=$HOME/Vagrant -var version=0.0.1`
-4. When this finishes, your `catalog_root_url` will have a file name `<BOXNAME>.json`. You can use a `file://` URL to that catalog as the value for `box_url` in a `Vagrantfile`, and Vagrant will notice when you publish new versions of the box. (See [Caryatid](https://github.com/mrled/caryatid)'s documentation for more information.)
+3. Hypervisor-specific notes:
+    - Hyper-V:
+        - Check the value of the `hyperv_vswitch_name` variable. It will create this VSwitch if it doesn't exist, but when it does so, it will create an _internal only_ switch, with no Internet access. Instead, you must created an external switch yourself from Hyper-V's Virtual Switch Manager, and connect it to whatever interface you are using to connect to the Internet on your host machine. At some point, we should get support for NAT switches which do not have to be manually bonded to a real interface but still provide Internet connectivity, and at that point, we can remove this variable altogether, but until then, there is some extra work involved.
+4. Run packer for whatever hypervisor you are using, and optionally supplying an override value for some variables, e.g. `packer build -only=virtualbox-iso -var catalog_root_url=$HOME/Vagrant -var version=0.0.1`
+5. When this finishes, your `catalog_root_url` will have a file name `<BOXNAME>.json`. You can use a `file://` URL to that catalog as the value for `box_url` in a `Vagrantfile`, and Vagrant will notice when you publish new versions of the box. (See [Caryatid](https://github.com/mrled/caryatid)'s documentation for more information.)
 
 There are some Vagrant boxes in the `vagrant` directory. They are intended as examples and are not guaranteed to work or remain stable over time.
 
