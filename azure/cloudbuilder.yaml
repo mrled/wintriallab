@@ -1,0 +1,235 @@
+---
+"$schema": https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#
+contentVersion: 1.0.0.0
+
+parameters:
+  storageAccountName:
+    type: string
+    metadata:
+      description: Name for existing Azure Storage Account. Must be globally unique, and a valid Azure DNS hostname.
+  opInsightsWorkspaceName:
+    type: string
+    metadata:
+      description: Name for new Operational Insights workspace. Must be globally unique.
+  opInsightsWorkspaceLocation:
+    type: string
+    defaultValue: westcentralus
+    metadata:
+      description: Location for new Operational Insights workspace. Unfortunately these are somewhat restricted.
+  builderVmAdminPassword:
+    type: securestring
+  builderVmAdminUsername:
+    type: string
+    defaultValue: WinTrialAdmin
+  builderVmSize:
+    type: string
+    defaultValue: Standard_D2_v3
+    metadata:
+      # https://azure.microsoft.com/en-us/blog/introducing-the-new-dv3-and-ev3-vm-sizes/
+      description: Size of the VM. Note that only Standard Dv3 and Ev3 VMs support the nested virtualization we use.
+  builderVmTimeZone:
+    type: string
+    defaultValue: GMT Standard Time
+    metadata:
+      description: "Name for a timezone in Windows format.
+        Note that only standard names such as 'Central Standard Time' should be used;
+        DST names such as 'Central Daylight Time' will result in a deployment failure.
+        However, when the standard name is passed, if the timezone is currently observing DST,
+        the VM will detect this automatically and DST will affect time repoted by e.g. Get-Date.
+        The best way to enumerate valid timezones is from .NET.
+        The following works in Powershell on Windows and Powershell Core on Unix:
+        `[System.TimeZoneInfo]::GetSystemTimeZones() | Select-Object -ExpandProperty StandardName`.
+        See also:
+        <https://technet.microsoft.com/en-us/library/cc749073(v=ws.10).aspx>,
+        <https://blogs.technet.microsoft.com/dst2007/2007/08/22/q-is-there-a-list-of-the-time-zones-and-daylight-saving-time-changes-in-windows/>,
+        <https://github.com/Azure/azure-sdk-for-node/issues/2266>"
+
+variables:
+
+  # This must be a *string literal*, or else it might get turned into a Date object in deploy.py
+  apiVersionInfrastructure: "2015-06-15"
+  apiVersionOpInsights: "2015-11-01-preview"  # ugh
+
+  storageAccountType: Standard_LRS
+  storageAccountId: "[concat('Microsoft.Storage/storageAccounts/', parameters('storageAccountName'))]"
+  storageAccountUri: "[concat('http://',parameters('storageAccountName'), '.blob.core.windows.net')]"
+
+  builderVmName: wintrialbuilder
+  builderVmImageSku: 2016-Datacenter
+  builderVmOsDiskName: "[concat(variables('builderVmName'), '-osdisk')]"
+  builderVmOsDiskUri: "[concat(variables('storageAccountUri'), '/vhds/', variables('builderVmOsDiskName'), '.vhd')]"
+
+  # wtlRepoCheckoutUri: "[concat('https://github.com/', variables('wtlRepoSubpath'))]"
+  wtlRepoSubpath:     "mrled/wintriallab"
+  wtlRepoBranch:      "azure-builder"
+  wtlDeployInitUri:   "[concat('https://raw.githubusercontent.com/', variables('wtlRepoSubpath'), '/', variables('wtlRepoBranch'), '/azure/deployInit.ps1')]"
+  wtlRepoZipUri:      "[concat('https://github.com/', variables('wtlRepoSubpath'), '/archive/', variables('wtlRepoBranch'), '.zip')]"
+
+  wtlDeployInitPath: "$env:SystemDrive\\deployInit.ps1"
+
+  deployExtEnableDebugging: "$true"  # must be "$true" or "$false", with dollar sign
+  deployExtName: "wtlDscExtension"
+  deployExtInvocation: "[concat(
+    'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -Command \"& { ',
+      'Invoke-WebRequest -Uri ', variables('wtlDeployInitUri'), ' -OutFile ', variables('wtlDeployInitPath'), ';',
+      '& ', variables('wtlDeployInitPath'),
+        ' -wtlRepoZipUri ', variables('wtlRepoZipUri'),
+        ' -installDebuggingTools:', variables('deployExtEnableDebugging'),
+        ' -packerUserName ', parameters('builderVmAdminUsername'),
+        ' -packerUserPassword ', parameters('builderVmAdminPassword'),
+        ' ;',
+    '}\"'
+  )]"
+
+  opInsightsExtName: wtlOpInsightsExt
+  opInsightsWorkspaceId: "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('opInsightsWorkspaceName'))]"
+
+  vnetName: "wintrialnet"
+  vnetId: "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+  vnetAddressPrefix: 172.16.0.0/24
+
+  subnetName: wintrialsubnet
+  subnetPrefix: "[variables('vnetAddressPrefix')]"
+  subnetId: "[concat(variables('vnetId'), '/subnets/', variables('subnetName'))]"
+
+  # This has to be Static, because a Dynamic address might not be up at the end of the template
+  # https://serverfault.com/questions/869029/how-can-i-consistently-output-a-public-ip-address-in-an-azure-resource-manager-t
+  pubIpAddrType: Static
+  pubIpAddrName: builderPubIp
+  pubIpAddrId: "[resourceId('Microsoft.Network/publicIPAddresses', variables('pubIpAddrName'))]"
+
+  nicName: builderNic
+  nicId: "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+
+  imagePublisher: MicrosoftWindowsServer
+  imageOffer: WindowsServer
+
+resources:
+- type: Microsoft.Storage/storageAccounts
+  name: "[parameters('storageAccountName')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
+  location: "[resourceGroup().location]"
+  properties:
+    accountType: "[variables('storageAccountType')]"
+
+- type: Microsoft.OperationalInsights/workspaces
+  name: "[parameters('opInsightsWorkspaceName')]"
+  apiVersion: "[variables('apiVersionOpInsights')]"
+  location: "[parameters('opInsightsWorkspaceLocation')]"
+  properties:
+    sku:
+      name: free
+    # NOTE: Docs say this should be "retentionInDays", but that's wrong, it must be "retention"
+    retention: 7
+
+- type: Microsoft.Network/publicIPAddresses
+  name: "[variables('pubIpAddrName')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
+  location: "[resourceGroup().location]"
+  properties:
+    publicIPAllocationMethod: "[variables('pubIpAddrType')]"
+
+- type: Microsoft.Network/virtualNetworks
+  name: "[variables('vnetName')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
+  location: "[resourceGroup().location]"
+  properties:
+    addressSpace:
+      addressPrefixes:
+      - "[variables('vnetAddressPrefix')]"
+    subnets:
+    - name: "[variables('subnetName')]"
+      properties:
+        addressPrefix: "[variables('subnetPrefix')]"
+
+- type: Microsoft.Network/networkInterfaces
+  name: "[variables('nicName')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
+  location: "[resourceGroup().location]"
+  dependsOn:
+  - "[variables('pubIpAddrId')]"
+  - "[variables('vnetId')]"
+  properties:
+    ipConfigurations:
+    - name: ipconfig1
+      properties:
+        privateIPAllocationMethod: Dynamic
+        publicIPAddress:
+          id: "[variables('pubIpAddrId')]"
+        subnet:
+          id: "[variables('subnetId')]"
+
+- type: Microsoft.Compute/virtualMachines
+  name: "[variables('builderVmName')]"
+  apiVersion: "[variables('apiVersionInfrastructure')]"
+  location: "[resourceGroup().location]"
+  dependsOn:
+  - "[variables('storageAccountId')]"
+  - "[variables('nicId')]"
+  properties:
+    hardwareProfile:
+      vmSize: "[parameters('builderVmSize')]"
+    osProfile:
+      computerName: "[variables('builderVmName')]"
+      adminUsername: "[parameters('builderVmAdminUsername')]"
+      adminPassword: "[parameters('builderVmAdminPassword')]"
+      windowsConfiguration:
+        timeZone: "[parameters('builderVmTimeZone')]"
+    storageProfile:
+      imageReference:
+        publisher: "[variables('imagePublisher')]"
+        offer: "[variables('imageOffer')]"
+        sku: "[variables('builderVmImageSku')]"
+        version: latest
+      osDisk:
+        name: "[variables('builderVmOsDiskName')]"
+        vhd:
+          uri: "[variables('builderVmOsDiskUri')]"
+        caching: ReadWrite
+        createOption: FromImage
+    networkProfile:
+      networkInterfaces:
+      - id: "[variables('nicId')]"
+  resources:
+  - type: extensions
+    name: "[variables('deployExtName')]"
+    apiVersion: "[variables('apiVersionInfrastructure')]"
+    location: "[resourceGroup().location]"
+    dependsOn:
+      - "[variables('builderVmName')]"
+    properties:
+      publisher: Microsoft.Compute
+      type: CustomScriptExtension
+      typeHandlerVersion: "1.8"
+      autoUpgradeMinorVersion: true
+      settings:
+        commandToExecute:  "[variables('deployExtInvocation')]"
+  # - type: extensions
+  #   name: "[variables('opInsightsExtName')]"
+  #   apiVersion: "[variables('apiVersionInfrastructure')]"
+  #   location: "[resourceGroup().location]"
+  #   dependsOn:
+  #   - "[variables('builderVmName')]"
+  #   properties:
+  #     publisher: Microsoft.EnterpriseCloud.Monitoring
+  #     type: MicrosoftMonitoringAgent
+  #     typeHandlerVersion: "1.0"
+  #     autoUpgradeMinorVersion: true
+  #     settings:
+  #       workspaceId: "[variables('opInsightsWorkspaceId')]"
+  #     protectedSettings:
+  #       # ... no idea what's going on here
+  #       workspaceKey: "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', parameters('opInsightsWorkspaceName')), '2015-03-20').primarySharedKey]"
+
+outputs:
+  builderConnectionInformation:
+    type: object
+    value:
+      Username: "[parameters('builderVmAdminUsername')]"
+      Password: "[parameters('builderVmAdminPassword')]"
+      IPAddress: "[reference(variables('pubIpAddrName')).ipAddress]"
+  opInsightsWorkspace:
+    type: object
+    value:
+      name: "[parameters('opInsightsWorkspaceName')]"
+      location: "[parameters('opInsightsWorkspaceLocation')]"
